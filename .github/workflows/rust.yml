@@ -1,0 +1,21 @@
+name: Rust
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install Dependencies
+      run: sudo apt-get install gcc pkg-config openssl libasound2-dev cmake build-essential python3 libfreetype6-dev libexpat1-dev libxcb-composite0-dev libssl-dev libx11-dev libpq-dev
+    - name: Build
+      run: cargo check --verbose
+# TODO(apmasell): Disabled until it will build
+#   - name: Build
+#     run: cargo build --verbose
+#   - name: Run tests
+#     run: cargo test --verbose
+

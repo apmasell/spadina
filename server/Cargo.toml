@@ -1,0 +1,13 @@
+[package]
+name = "puzzleverse-server"
+version = "0.1.0"
+authors = ["Andre Masella <andre@masella.name>"]
+edition = "2018"
+crate-type = ["bin"]
+
+[dependencies]
+diesel = { version = "1.0.0", features = ["postgres"] }
+hyper = "0.13.2"
+puzzleverse-core = { path = "../core" }
+tokio-tungstenite = "0.10.1"
+tungstenite = "0.10.1"
