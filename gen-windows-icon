@@ -1,0 +1,4 @@
+#!/bin/sh
+
+inkscape -o spadina.png spadina.svg
+convert -background transparent spadina.png -define icon:auto-resize=16,32,48,64,256 gui-client/wix/spadina.ico

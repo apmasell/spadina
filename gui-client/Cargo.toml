@@ -1,0 +1,84 @@
+[package]
+name = 'spadina-client-gui'
+version = '0.1.0'
+authors = ['Andre Masella <andre@masella.name>']
+edition = '2021'
+
+[features]
+default = ["kerberos"]
+kerberos = ['cross-krb5']
+
+[dependencies]
+addr = "^0.15"
+async-trait = '^0.1'
+bevy_egui = {version =  '^0.17', features=["manage_clipboard", "open_url"]}
+bevy_mod_picking = '^0.10'
+cross-krb5 = { version = "^0.3", optional = true }
+derivative = '^2.2'
+form_urlencoded = '^1.0'
+futures = '^0.3'
+futures-lite = '^1.12'
+futures-sink = '^0.3'
+hex = '^0.4'
+replace_with = "^0.1"
+rmp = '^0.8'
+rmp-serde = '^1.1'
+serde_json = '1.0'
+sha3 = '^0.10'
+webbrowser = '^0.8'
+
+[dependencies.bevy]
+version = '^0.8'
+features = [
+    'bevy_audio',
+    'bevy_winit',
+    'render',
+    'png',
+    'mp3',
+    'wav',
+    'wayland',
+    'x11',
+]
+
+[dependencies.chrono]
+version = '^0.4'
+features = ['serde']
+
+[dependencies.spadina-core]
+path = '../core'
+
+[dependencies.spadina-client]
+path = '../client'
+
+[dependencies.serde]
+version = '^1.0'
+features = ['derive']
+
+[target."cfg(not(target_arch = \"wasm32\"))".dependencies]
+alerts = '^0.1'
+argparse = '^0.2'
+bytes = '^1.0'
+directories = '^4.0'
+http = '^0.2'
+hyper-tls = '^0.5'
+openssl = '^0.10'
+rand = '^0.8'
+self_update = {version = "^0", features = ["archive-zip", "compression-zip-deflate", "rustls" ]}
+tokio = {version='^1.7', features=["default", "macros", "rt-multi-thread"]}
+tokio-tungstenite = '^0.18'
+
+[target."cfg(not(target_arch = \"wasm32\"))".dependencies.hyper]
+version = '^0.14'
+features = [
+    'client',
+    'http1',
+]
+[target."cfg(target_arch = \"wasm32\")".dependencies]
+wasm-bindgen = '^0.2'
+
+[target."cfg(target_arch = \"wasm32\")".dependencies.stdweb]
+version = '^0.4'
+features = ['futures-support']
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"

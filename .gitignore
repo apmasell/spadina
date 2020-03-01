@@ -1,0 +1,12 @@
+*~
+*.bak
+.env
+gui-client/wix/spadina.ico
+.idea
+*.orig
+server/client*
+server/puzzleverse-client*
+server/snippets
+spadina.png
+*.swp
+target

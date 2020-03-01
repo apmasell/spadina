@@ -1,0 +1,101 @@
+[package]
+name = 'spadina-server'
+version = '0.1.0'
+authors = ['Andre Masella <andre@masella.name>']
+edition = '2021'
+
+[features]
+default = ["mysql", "kerberos"]
+wasm-client = []
+mysql = ['diesel/mysql']
+kerberos = ['cross-krb5']
+
+[dependencies]
+addr = "^0.15"
+dashmap = "^5.4"
+argparse = '^0.2'
+async-trait = '^0.1'
+base64 = '^0.21'
+base16ct = {version = '^0.2', features = ['alloc']}
+bb8 = "^0.8"
+bdays = '^0.1'
+byteorder = '^1.4'
+bytes = '^1.0'
+concat-arrays = '^0.1'
+cooked-waker = '^5.0'
+cross-krb5 = { version = "^0.3", optional = true }
+diesel_json = '^0.2'
+diesel_migrations = '^2.0'
+form_urlencoded = '^1.0'
+futures = { version = '^0.3', features = ['alloc'] }
+futures-sink = '^0.3'
+google-cloud-storage = "^0.13"
+hex = '^0.4'
+horrorshow = '^0.8'
+http = '^0.2'
+hyper-tls = '^0.5'
+icalendar = '^0.15'
+jsonwebtoken = '^8.0'
+lazy_static = '^1.4'
+ldap3 = '^0.11'
+lru = '^0.10'
+native-tls = '^0.2'
+notify = '^5.0'
+num-integer = '^0.1'
+openidconnect = "^3.0"
+openssl = '^0.10'
+otpauth = '^0.4'
+phpbb-pwhash = '^0.1'
+pin-project = '^1.0'
+prometheus-client = '^0.20'
+rand = '^0.8'
+replace_with = "^0.1"
+rmp = '^0.8'
+rmp-serde = '^1.0'
+rust-s3 = '^0.33'
+serde_json = '^1.0'
+serde_urlencoded = '^0.7'
+serde_with = { version = '^2.0', features = ["json"] }
+sha3 = '^0.10'
+tokio-stream = { version = '^0.1', features = ["sync"] }
+tokio-native-tls = '^0.3'
+tokio-tungstenite = '^0.18'
+git-version = "^0.3"
+
+[dependencies.chrono]
+version = '^0.4'
+features = ['serde']
+
+[dependencies.diesel]
+version = '^2.0'
+default-features = false
+features = [
+    'chrono',
+    'postgres',
+    'r2d2',
+    'i-implement-a-third-party-backend-and-opt-into-breaking-changes'
+]
+
+[dependencies.hyper]
+version = '^0.14'
+features = [
+    'client',
+    'server',
+    'stream',
+    'http1',
+]
+
+[dependencies.spadina-core]
+path = '../core'
+
+[dependencies.serde]
+version = '^1.0'
+features = ['derive', 'rc']
+
+[dependencies.sha1]
+version = '^0.10'
+features = ['std']
+
+[dependencies.tokio]
+version = '^1.0'
+features = ['full']

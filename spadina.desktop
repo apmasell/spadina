@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Terminal=false
+Exec=spadina-client
+Icon=spadina
+Type=Application
+Categories=Game;
+Name=Spadina
+Comment=Puzzle-solving multi-player game

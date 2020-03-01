@@ -1,0 +1,16 @@
+[package]
+name = 'spadina-client-tui'
+version = '0.1.0'
+authors = ['Andre Masella <andre@masella.name>']
+edition = '2021'
+
+[dependencies]
+argparse = '^0.2'
+rmp-serde = '^1.1'
+zip = '^0.5'
+
+[dependencies.spadina-core]
+path = '../core'
+
+[dependencies.spadina-client]
+path = '../client'

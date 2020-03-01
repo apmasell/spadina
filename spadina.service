@@ -1,0 +1,11 @@
+[Unit]
+Description=Spadina Game server
+
+[Service]
+EnvironmentFile=/etc/default/spadina
+ExecStart=/usr/bin/spadina-server  -a ${AUTH_URL} -d ${DB_URL} -j ${JWT_SECRET} --ssl ${PKCS12_FILE}
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
