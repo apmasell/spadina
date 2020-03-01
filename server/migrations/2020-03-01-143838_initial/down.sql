@@ -1,1 +1,9 @@
--- This file should undo anything in `up.sql`
+ALTER TABLE Player DROP CONSTRAINT player_realm_id;
+
+DROP TABLE ServerACL;
+DROP TABLE RealmChat;
+DROP TABLE Realm;
+DROP TABLE PlayerChat;
+DROP TABLE Player;
+
+DROP TABLE AuthOTP;
