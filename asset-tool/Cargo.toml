@@ -1,0 +1,13 @@
+[package]
+name = 'puzzleverse-asset-tool'
+version = '0.1.0'
+authors = ['Andre Masella <andre@masella.name>']
+edition = '2021'
+
+[dependencies]
+argparse = '^0.2'
+rmp-serde = '^0.15'
+zip = '^0.5'
+
+[dependencies.puzzleverse-core]
+path = '../core'
