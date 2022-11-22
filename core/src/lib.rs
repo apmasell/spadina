@@ -122,30 +122,23 @@ pub enum Action {
 }
 /// An announcement that should be visible to users
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Announcement {
-  /// The text that should be displayed
-  pub text: String,
-  /// The time after which the annoucement will no longer be displayed
-  pub expires: chrono::DateTime<chrono::Utc>,
-  /// The time when the event described will start
-  pub event: AnnouncementTime,
-  /// The location where the event will be held
-  pub realm: AnnouncementRealmTarget,
-}
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum AnnouncementTime {
-  /// The event has no start time
-  None,
-  /// The event starts at a particular time
-  After(chrono::DateTime<chrono::Utc>),
-  /// The event starts a particular time and lasts a certain number of minutes
-  Window(chrono::DateTime<chrono::Utc>, u32),
+pub enum Announcement {
+  /// Just raw text
+  Text(String),
+  /// Text with a time. The time is relevant to the event but does *not* control when the text is displayed.
+  Event(String, chrono::DateTime<chrono::Utc>),
+  /// Text with a time range. The time is relevant to the event but does *not* control when the text is displayed.
+  LimitedEvent(String, chrono::DateTime<chrono::Utc>, u32),
+  /// Text with a link to a realm
+  TextWithLocation { text: String, realm: AnnouncementRealmTarget },
+  /// Text with a time and a link to a realm. The time is relevant to the event but does *not* control when the text is displayed.
+  EventWithLocation { text: String, start: chrono::DateTime<chrono::Utc>, realm: AnnouncementRealmTarget },
+  /// Text with a time range and a link to a realm. The time is relevant to the event but does *not* control when the text is displayed.
+  LimitedEventWithLocation { text: String, start: chrono::DateTime<chrono::Utc>, length: u32, realm: AnnouncementRealmTarget },
 }
 /// A realm link for an announcement
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum AnnouncementRealmTarget {
-  /// The event is nowhere
-  None,
   /// The player's own copy of a realm identified by an asset
   Personal(String),
   /// A realm on this server

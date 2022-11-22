@@ -1985,8 +1985,8 @@ impl Perturbation {
         }
         &Perturbation::Range(v) => rng.gen_range((-v)..(v)),
         &Perturbation::Gaussian(s) => match rand_distr::Normal::new(0.0, s) {
-          Ok(normal) => normal.sample(&mut rng),
-          Err(_) => 0.0,
+          Ok(normal) => (normal.sample(&mut rng)),
+          Err(_) => (0.0),
         },
       },
     )

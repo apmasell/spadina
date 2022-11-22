@@ -40,7 +40,7 @@ impl Decay {
       Decay::Constant => 1.0,
       Decay::Euclidean => (delta_x * delta_x + delta_y * delta_y + delta_z * delta_z).sqrt(),
       Decay::Inverted(original) => 1.0 - original.compute(delta_x, delta_y, delta_z),
-      Decay::Linear => delta_x * delta_x + delta_y * delta_y + delta_z * delta_z,
+      Decay::Linear => (delta_x * delta_x + delta_y * delta_y + delta_z * delta_z),
       Decay::Shell => (delta_x * delta_x + delta_y * delta_y + delta_z * delta_z).log(1.0 / 3.0),
       Decay::Step(cutoff, original) => {
         let v = original.compute(delta_x, delta_y, delta_z);

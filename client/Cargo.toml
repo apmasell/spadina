@@ -2,21 +2,44 @@
 name = 'puzzleverse-client'
 version = '0.1.0'
 authors = ['Andre Masella <andre@masella.name>']
-edition = '2018'
+edition = '2021'
+
+[features]
+default = ["kerberos"]
+kerberos = ['cross-krb5']
 
 [dependencies]
 addr = "^0.15"
 async-trait = '^0.1'
+bevy_egui = {version =  '^0.17', features=["manage_clipboard", "open_url"]}
+bevy_mod_picking = '^0.10'
+cross-krb5 = { version = "^0.3", optional = true }
 derivative = '^2.2'
 form_urlencoded = '^1.0'
 futures = '^0.3'
+futures-lite = '^1.12'
 futures-sink = '^0.3'
 hex = '^0.4'
+pathfinding = "^3.0"
+replace_with = "^0.1"
 rmp = '^0.8'
 rmp-serde = '^1.1'
 serde_json = '1.0'
 sha3 = '^0.10'
 webbrowser = '^0.8'
+
+[dependencies.bevy]
+version = '^0.8'
+features = [
+    'bevy_audio',
+    'bevy_winit',
+    'render',
+    'png',
+    'mp3',
+    'wav',
+    'wayland',
+    'x11',
+]
 
 [dependencies.chrono]
 version = '^0.4'
@@ -42,7 +65,6 @@ rand = '^0.8'
 self_update = {version = "^0", features = ["archive-zip", "compression-zip-deflate", "rustls" ]}
 tokio = {version='^1.7', features=["default", "macros", "rt-multi-thread"]}
 tokio-tungstenite = '^0.17'
-tungstenite = '^0.17'
 
 [target."cfg(not(target_arch = \"wasm32\"))".dependencies.hyper]
 version = '^0.14'
