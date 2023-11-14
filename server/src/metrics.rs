@@ -1,17 +1,34 @@
-use prometheus_client::encoding::EncodeLabelSet;
+use prometheus_client::encoding::{EncodeLabelSet, EncodeLabelValue, LabelValueEncoder};
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
+use std::fmt::Error;
+use std::hash::Hash;
+use std::sync::Arc;
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct SharedString(pub Arc<str>);
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 pub struct BuildLabel {
   pub build_id: &'static str,
 }
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 pub struct PlayerLabel {
-  pub player: crate::shstr::ShStr,
+  pub player: SharedString,
 }
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 pub struct PeerLabel {
-  pub peer: crate::shstr::ShStr,
+  pub peer: SharedString,
+}
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+pub struct SettingLabel {
+  pub setting: &'static str,
+}
+
+impl EncodeLabelValue for SharedString {
+  fn encode(&self, encoder: &mut LabelValueEncoder) -> Result<(), Error> {
+    EncodeLabelValue::encode(&self.0.as_ref(), encoder)
+  }
 }
 lazy_static::lazy_static! {
     pub(crate) static ref BUILD_ID_MON: Family<BuildLabel, Counter>  = Default::default();
@@ -38,13 +55,7 @@ lazy_static::lazy_static! {
     pub(crate) static ref FAILED_SERVER_CALLBACK: Family<PeerLabel, Counter> = Default::default();
 }
 lazy_static::lazy_static! {
-    pub(crate) static ref SERVER_ACL: crate::prometheus_locks::PrometheusLabelled<crate::prometheus_locks::rwlock::RwLockStatus<crate::access::ServerAccess>> = Default::default();
-}
-lazy_static::lazy_static! {
-    pub(crate) static ref BANNED_PEERS: crate::prometheus_locks::PrometheusLabelled<crate::prometheus_locks::rwlock::RwLockStatus<()>> = Default::default();
-}
-lazy_static::lazy_static! {
-    pub(crate) static ref BOOKMARKS_SENDER: crate::prometheus_locks::PrometheusLabelled<()> = Default::default();
+    pub(crate) static ref SETTING: crate::prometheus_locks::PrometheusLabelled<crate::prometheus_locks::rwlock::RwLockStatus<SettingLabel>> = Default::default();
 }
 
 pub(crate) fn register(registry: &mut prometheus_client::registry::Registry) {
@@ -59,8 +70,6 @@ pub(crate) fn register(registry: &mut prometheus_client::registry::Registry) {
     "Number of times a server asked for a connection and then failed to be accessible.",
     FAILED_SERVER_CALLBACK.clone(),
   );
-  SERVER_ACL.register(registry, "server_acl", "server-level access control");
-  BANNED_PEERS.register(registry, "banned_peers", "banned peers list");
-  BOOKMARKS_SENDER.register(registry, "bookmarks_sender", "realm bookmark watch sender");
+  SETTING.register(registry, "server_setting", "server-level setting");
   BUILD_ID_MON.get_or_create(&BuildLabel { build_id: git_version::git_version!() }).inc();
 }

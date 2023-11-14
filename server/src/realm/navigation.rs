@@ -13,7 +13,7 @@ pub struct Bridge {
   condition: BridgeCondition,
 }
 
-/// The rule to deicde the transition between two grids
+/// The rule to decide the transition between two grids
 #[derive(Clone)]
 pub enum BridgeCondition {
   /// The player can always walk with the animation and time penalty given

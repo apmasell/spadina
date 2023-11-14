@@ -22,54 +22,20 @@ in the network, any player can create their own instance using the realm's
 asset identifier. Every realm instance that is created also has an identifier
 and accessing that realm requires that server to be online.
 
-Updating a realm is not possible. An update is essentially creating a brand new
-realm and players can create an instance of the new realm.
+Updating a published realm is not possible. It is possible to create a brand
+new realm and players can create an instance of the new realm. When creating a
+realm, the _editor_ is used that can allow playing a realm before publishing
+it.
 
 Realms can contain references to other realms. These are called _links_ both
 because that's what _Myst_ calls them and they are effectively hyperlinks.
 There are there are a few kinds:
 
 - spawn point: a different location in the same realm
-- home: sends the player to their home realm. If multiple players are linked as a group, each player is sent to their individual home realm.
-- global: send a player to a particular _instance_ of a realm.
-- settings: like global, but the player can customise which realm without changing the realm itself
-- owner: send the players to another instance of a realm using only the asset identifier; this finds or creates the instance of that asset identifier for owner of the current realm
-- train-car: send the player to the next train-car when in train-car mode
-
-This might all be a bit abstract and this design was intended as improvement of
-_Myst Online: Uru Live_.
-
-In _MOUL_, a player in a deadly situation will _panic link_ to their home realm
-(called _Relto_ in _MOUL_); this is the intended function of _home_ links.
-
-It is desirable to create common meeting spaces, so creating a link to
-particular instance via a _global_ link is meant to accomplish this. This
-functionality exists in _MOUL_ but in a very different design: some _Ages_
-(realms) are declared to be global (_e.g._, Ae'gura). In Spadina, this may
-prove to be a bad idea since it is always possible for an owner to delete the
-target of a link resulting in a dead link.
-
-To combat this, it is also possible to allow the user to change the destination
-realm using a _settings_ link. This gives a default, but permits the realm
-owner to adjust the link if it dies or for another reason. This could be used
-to create a hub with destination that change for social reasons (_e.g._,
-feature a new realm every month).
-
-Finally, owner links are meant to emulate another _MOUL_ feature. In _MOUL_,
-the player's first challenge is a set of interlinked Ages (Gahreesen, Teledahn,
-Eder Kemo, Eder Gira, and Kadish Tolesa). Each of these Ages has links to some
-of the others and they form an interconnected puzzle. Puzzle information cannot
-be shared across realms in Spadina, but they can be narratively connected.
-There is a subtle change to the behaviour of _MOUL_: if me and another player
-are in Teledahn and use the link to Gahreesen, I will go to _my_ Gahreesen and
-they will go to _their_ Gahreesen. The Spadina behaviour is that we would
-both go to _my_ Gahreesen because we are in _my_ Teledahn.
-
-Train-car links work like owner-links with the only difference being that the
-train car queuing system will automatically select the next realm. When
-train-car realms are created, the sequence number is baked into the realm. This
-means that each player will link between realms in a consistent order, though
-that order is unique to each player.
+- nowhere: removes the player from this world to no specific place
+- settings: the player can select a target location. This is effectively a
+  fill-in-the-blank link, where the owner of the instance gets to choose the
+  destination.
 
 ## Client/Server Split and Puzzles
 When creating a realm, some of the behaviour will exist on the client and some
@@ -82,31 +48,97 @@ following should be noted:
 For the puzzle cut-off, this means:
 
 - there is an upper limit for how large and complex a puzzle can be
-- puzzles shouldn't have "unstable" behaviour where they need to scan the rules many times to reach a point where there are no new states.
+- puzzles shouldn't have "unstable" behaviour where they oscillate rapidly between states
 
-Puzzles are made of _pieces_, small elemental blocks for building puzzle logic.
-Some pieces are embedded in the realm where a player can interact with them
-(_e.g._, push a button) and some feed back into the world (_e.g._, show an
-animation if a machine was turned on). Many are the logical glue of the puzzle
-that are invisible to the players.
+In 3D (and even 2D) graphics, objects have _properties_, _attributes_, or
+_modifiers_ that determine their appearance, such as colour, albedo, and
+transparency, that can be set to different values. Spadina's design is that
+every property can be set from the game logic. There are two selection modes:
+set based on a Boolean (true/false; on/off) value or set based on a number.
 
-Each puzzle piece can be given _commands_ which cause the puzzle piece to
-update its state. When changed, puzzle pieces emit _events_. Part of the realm
-are _rules_ which tie the events from one puzzle piece to the commands of
-another.
+In addition to allowing properties to be set from the puzzles, it is also
+possible to select randomly from pre-determined values or lets players choose.
 
-For example, there could be a button puzzle piece, a timer puzzle piece, and a
-sink puzzle piece (a generic output that controls something in the realm).
-Suppose the sink is connected to a light source in the realm. When the button
-is pressed, it emits an event. The rules state that when that button is
-pressed, the timer is set to 30 seconds. The rules also state that if the time
-remaining is greater than zero, the sink should be on. This would produce a
-light on a 30 second timer.
+## State Machines
+The default way to to program the puzzles is using state machines. A state
+machine can be thought of as a table with the columns being different
+properties of the world to control. When a world is created, the state machine
+will _select_ the first row in the table. The rows can have _transitions_ which
+cause the state machine to select a new state based on how players interact
+with the world (or a timer).
 
-The [Puzzle Pieces](puzzle-pieces.md) guide describes all the puzzle pieces and
-how they work.
+Let's start with a simple state machine to control a self-closing door:
 
-One special puzzle piece is the _proximity_ puzzle piece. This puzzle piece is
-connected to a patch of ground. It functions as an input (it can count the
-number of players standing on it) and it can function and an output (it can
-link all the players standing on it). 
+| State | Door    | Timer |
+|-------|---------|-------|
+| 1     | Closed  | Off   |
+| 2     | Open    | 30sec |
+
+| State | Action        | New State |
+|-------|---------------|-----------|
+| 1     | Click Button  | 2         |
+| 2     | Timer Elapsed | 1         |
+
+This would create a door that would:
+
+- start closed
+- open when the button is pushed
+- close automatically after 30 seconds
+
+Let's suppose we want to create a door that needs the button to be pushed
+twice, with a 30-60 second delay, and then remain open until the button is
+pushed again:
+
+| State     | Door    | Timer |
+|-----------|---------|-------|
+| Closed    | Closed  | Off   |
+| Triggered | Closed  | 30sec |
+| Waiting   | Closed  | 30sec |
+| Open      | Open    | Off   |
+
+| State      | Action        | New State |
+|------------|---------------|-----------|
+| Closed     | Click Button  | Triggered |
+| Triggered  | Click Button  | Closed    |
+| Triggered  | Timer Elapsed | Waiting   |
+| Waiting    | Click Button  | Open      |
+| Waiting    | Timer Elapsed | Closed    |
+| Open       | Click Button  | Closed    |
+
+## Area Interaction
+While the state machines can be triggered by direct player action (_i.e._,
+click on things in the world), it is also helpful to have them interact by
+indirect player action (_i.e._, moving around the world). Special _areas_ can
+be marked in the world and the puzzle can count the number of players in that
+area and the puzzle can affect players in those areas.
+
+As players move around the world, the number of players occupying an area is
+available as an action and it can be used in a mathematical formula (_e.g._,
+number of players greater than 3). It is also possible to use combinations of
+players counts (_e.g._, number of players in area A is greater than number of
+players in area B).
+
+The puzzle can then set the behaviour of an area when a player enters it:
+
+- normal - players can pass through this area
+- tranfer players from one area to another
+- link players to a realm
+
+Although there is no inventory, realms have the ability to _mark_ players. Each
+player has a number of bits (switches) that can be turned on and off. The
+behaviour of an area and the counts available to the puzzle can be filtered
+based on these switches.
+
+For example, suppose there is a forbidden doorway near the entrance of a realm.
+If players enter the doorway, they get sent home. Players need to travel to
+another room and solve a puzzle. When that puzzle is solved correctly, and
+players in that room are marked. Then, when marked, players can pass through
+the forbidden doorway.
+
+Marking can also affect how the world is displayed to the player. For instance,
+suppose you want to create a puzzle where two players have to collaborate to
+solve a puzzle. The world could be designed so that each player has to solve a
+puzzle to get a different mark. Depending on which mark they have, they see a
+different button light up in the world. They then have to press the right pair
+of buttons based on their combined knowledge.
+The puzzle can also _mark_ players

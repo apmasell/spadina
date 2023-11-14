@@ -1,5 +1,9 @@
+use crate::reference_converter::{Converter, Referencer};
+use std::cmp::Ordering;
+use std::sync::Arc;
+
 /// The result of parsing a player identifier
-#[derive(Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PlayerIdentifier<S: AsRef<str>> {
   /// The player is an name for a player on the local server
   Local(S),
@@ -14,7 +18,7 @@ pub enum PlayerIdentifierError {
 }
 /// When querying the online status and location of another player, this is the response
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub enum PlayerLocationState<S: AsRef<str>> {
+pub enum OnlineState<S: AsRef<str>> {
   /// Player state is not visible
   Unknown,
   /// Not a valid player
@@ -30,33 +34,32 @@ pub enum PlayerLocationState<S: AsRef<str>> {
   /// Online and hosted
   Guest { host: PlayerIdentifier<S> },
   /// Online and in a particular realm
-  Realm { realm: crate::realm::RealmTarget<S> },
+  Location { location: crate::location::target::AbsoluteTarget<S> },
   /// The server is not yet contacted; a second response may follow
   ServerDown,
 }
 
 impl<S: AsRef<str>> PlayerIdentifier<S> {
-  pub fn as_owned_str(&self) -> PlayerIdentifier<String> {
+  pub fn reference<'a, R: Referencer<S>>(&'a self, reference: R) -> PlayerIdentifier<R::Output<'a>>
+  where
+    <R as Referencer<S>>::Output<'a>: AsRef<str>,
+  {
     match self {
-      PlayerIdentifier::Local(p) => PlayerIdentifier::Local(p.as_ref().to_string()),
+      PlayerIdentifier::Local(p) => PlayerIdentifier::Local(reference.convert(p)),
       PlayerIdentifier::Remote { server, player } => {
-        PlayerIdentifier::Remote { server: server.as_ref().to_string(), player: player.as_ref().to_string() }
+        PlayerIdentifier::Remote { server: reference.convert(server), player: reference.convert(player) }
       }
     }
   }
-  pub fn as_ref(&self) -> PlayerIdentifier<&str> {
-    match self {
-      PlayerIdentifier::Local(p) => PlayerIdentifier::Local(p.as_ref()),
-      PlayerIdentifier::Remote { server, player } => PlayerIdentifier::Remote { server: server.as_ref(), player: player.as_ref() },
-    }
-  }
-  pub fn convert_str<T: AsRef<str>>(self) -> PlayerIdentifier<T>
+  pub fn convert<C: Converter<S>>(self, converter: C) -> PlayerIdentifier<C::Output>
   where
-    S: Into<T>,
+    <C as Converter<S>>::Output: AsRef<str>,
   {
     match self {
-      PlayerIdentifier::Local(n) => PlayerIdentifier::Local(n.into()),
-      PlayerIdentifier::Remote { server, player } => PlayerIdentifier::Remote { server: server.into(), player: player.into() },
+      PlayerIdentifier::Local(n) => PlayerIdentifier::Local(converter.convert(n)),
+      PlayerIdentifier::Remote { server, player } => {
+        PlayerIdentifier::Remote { server: converter.convert(server), player: converter.convert(player) }
+      }
     }
   }
   pub fn get_player(&self) -> &S {
@@ -92,14 +95,6 @@ impl<S: AsRef<str>> PlayerIdentifier<S> {
         } else {
           PlayerIdentifier::Remote { server, player }
         }
-      }
-    }
-  }
-  pub fn to_owned(&self) -> PlayerIdentifier<String> {
-    match self {
-      PlayerIdentifier::Local(name) => PlayerIdentifier::Local(name.as_ref().to_string()),
-      PlayerIdentifier::Remote { server, player } => {
-        PlayerIdentifier::Remote { server: server.as_ref().to_string(), player: player.as_ref().to_string() }
       }
     }
   }
@@ -152,6 +147,33 @@ impl<S: AsRef<str>> std::fmt::Display for PlayerIdentifier<S> {
   }
 }
 
+impl<S: AsRef<str>> Eq for PlayerIdentifier<S> {}
+
+impl<S: AsRef<str>> PartialEq<Self> for PlayerIdentifier<S> {
+  fn eq(&self, other: &Self) -> bool {
+    self.cmp(other) == Ordering::Equal
+  }
+}
+
+impl<S: AsRef<str>> PartialOrd<Self> for PlayerIdentifier<S> {
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl<S: AsRef<str>> Ord for PlayerIdentifier<S> {
+  fn cmp(&self, other: &Self) -> Ordering {
+    match (self, other) {
+      (PlayerIdentifier::Local(s), PlayerIdentifier::Local(o)) => s.as_ref().cmp(o.as_ref()),
+      (PlayerIdentifier::Remote { server, player }, PlayerIdentifier::Remote { server: other_server, player: other_player }) => {
+        player.as_ref().cmp(other_player.as_ref()).then_with(|| server.as_ref().cmp(other_server.as_ref()))
+      }
+      (PlayerIdentifier::Local(s), PlayerIdentifier::Remote { player, .. }) => s.as_ref().cmp(player.as_ref()).then(Ordering::Less),
+      (PlayerIdentifier::Remote { player, .. }, PlayerIdentifier::Local(s)) => player.as_ref().cmp(s.as_ref()).then(Ordering::Greater),
+    }
+  }
+}
+
 impl std::fmt::Display for PlayerIdentifierError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.write_str(match self {
@@ -161,39 +183,44 @@ impl std::fmt::Display for PlayerIdentifierError {
     })
   }
 }
-impl<S: AsRef<str>> PlayerLocationState<S> {
-  pub fn as_ref<'a>(&'a self) -> PlayerLocationState<&'a str> {
-    match self {
-      PlayerLocationState::Unknown => PlayerLocationState::Unknown,
-      PlayerLocationState::Invalid => PlayerLocationState::Invalid,
-      PlayerLocationState::Offline => PlayerLocationState::Offline,
-      PlayerLocationState::Online => PlayerLocationState::Online,
-      PlayerLocationState::InTransit => PlayerLocationState::InTransit,
-      PlayerLocationState::Hosting => PlayerLocationState::Hosting,
-      PlayerLocationState::Guest { host } => PlayerLocationState::Guest { host: host.as_ref() },
-      PlayerLocationState::Realm { realm } => PlayerLocationState::Realm { realm: realm.as_ref() },
-      PlayerLocationState::ServerDown => PlayerLocationState::ServerDown,
-    }
-  }
-  pub fn convert_str<T: AsRef<str>>(self) -> PlayerLocationState<T>
+impl<S: AsRef<str>> OnlineState<S> {
+  pub fn reference<'a, R: Referencer<S>>(&'a self, reference: R) -> OnlineState<R::Output<'a>>
   where
-    S: Into<T>,
+    <R as Referencer<S>>::Output<'a>: AsRef<str>,
   {
     match self {
-      PlayerLocationState::Unknown => PlayerLocationState::Unknown,
-      PlayerLocationState::Invalid => PlayerLocationState::Invalid,
-      PlayerLocationState::Offline => PlayerLocationState::Offline,
-      PlayerLocationState::Online => PlayerLocationState::Online,
-      PlayerLocationState::InTransit => PlayerLocationState::InTransit,
-      PlayerLocationState::Hosting => PlayerLocationState::Hosting,
-      PlayerLocationState::Guest { host } => PlayerLocationState::Guest { host: host.convert_str() },
-      PlayerLocationState::Realm { realm } => PlayerLocationState::Realm { realm: realm.convert_str() },
-      PlayerLocationState::ServerDown => PlayerLocationState::ServerDown,
+      OnlineState::Unknown => OnlineState::Unknown,
+      OnlineState::Invalid => OnlineState::Invalid,
+      OnlineState::Offline => OnlineState::Offline,
+      OnlineState::Online => OnlineState::Online,
+      OnlineState::InTransit => OnlineState::InTransit,
+      OnlineState::Hosting => OnlineState::Hosting,
+      OnlineState::Guest { host } => OnlineState::Guest { host: host.reference(reference) },
+      OnlineState::Location { location } => OnlineState::Location { location: location.reference(reference) },
+      OnlineState::ServerDown => OnlineState::ServerDown,
+    }
+  }
+  pub fn convert<C: Converter<S>>(self, converter: C) -> OnlineState<C::Output>
+  where
+    <C as Converter<S>>::Output: AsRef<str>,
+  {
+    match self {
+      OnlineState::Unknown => OnlineState::Unknown,
+      OnlineState::Invalid => OnlineState::Invalid,
+      OnlineState::Offline => OnlineState::Offline,
+      OnlineState::Online => OnlineState::Online,
+      OnlineState::InTransit => OnlineState::InTransit,
+      OnlineState::Hosting => OnlineState::Hosting,
+      OnlineState::Guest { host } => OnlineState::Guest { host: host.convert(converter) },
+      OnlineState::Location { location } => OnlineState::Location { location: location.convert(converter) },
+      OnlineState::ServerDown => OnlineState::ServerDown,
     }
   }
 }
-impl<S: AsRef<str>> Default for PlayerLocationState<S> {
+impl<S: AsRef<str>> Default for OnlineState<S> {
   fn default() -> Self {
-    PlayerLocationState::Unknown
+    OnlineState::Unknown
   }
 }
+
+pub type SharedPlayerIdentifier = PlayerIdentifier<Arc<str>>;

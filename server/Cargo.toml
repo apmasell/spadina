@@ -5,83 +5,67 @@ authors = ['Andre Masella <andre@masella.name>']
 edition = '2021'
 
 [features]
-default = ["mysql", "kerberos"]
+default = ["mysql", "postgres"]
 wasm-client = []
 mysql = ['diesel/mysql']
-kerberos = ['cross-krb5']
+postgres = ["diesel/postgres"]
 
 [dependencies]
-addr = "^0.15"
-dashmap = "^5.4"
 argparse = '^0.2'
-async-trait = '^0.1'
-base64 = '^0.21'
+async-trait = "^0.1"
 base16ct = {version = '^0.2', features = ['alloc']}
-bb8 = "^0.8"
-bdays = '^0.1'
-byteorder = '^1.4'
-bytes = '^1.0'
-concat-arrays = '^0.1'
+base64 = '^0.22'
+bb8 = "^0.9"
 cooked-waker = '^5.0'
-cross-krb5 = { version = "^0.3", optional = true }
-diesel_json = '^0.2'
-diesel_migrations = '^2.0'
-form_urlencoded = '^1.0'
+diesel_migrations = '^2.1'
+form_urlencoded = '^1.2'
 futures = { version = '^0.3', features = ['alloc'] }
-futures-sink = '^0.3'
-google-cloud-storage = "^0.13"
-hex = '^0.4'
+futures-batch = '^0.6'
+git-version = "^0.3"
+google-cloud-storage = "^0.23"
 horrorshow = '^0.8'
-http = '^0.2'
-hyper-tls = '^0.5'
-icalendar = '^0.15'
-jsonwebtoken = '^8.0'
+http-body-util = "^0.1"
+hyper-util = '^0.1'
+icalendar = '^0.16'
+icu = { version = "1.5.0", features = ["std", "sync", "serde"] }
+jsonwebtoken = '^9.2'
 lazy_static = '^1.4'
 ldap3 = '^0.11'
-lru = '^0.10'
+libsqlite3-sys = { version = "0.30.1", features = ["bundled", "bundled-windows"] }
 native-tls = '^0.2'
-notify = '^5.0'
-num-integer = '^0.1'
-openidconnect = "^3.0"
+notify = '^7.0'
+openidconnect = "^3.4"
 openssl = '^0.10'
-otpauth = '^0.4'
+otpauth = '^0.5'
 phpbb-pwhash = '^0.1'
-pin-project = '^1.0'
-prometheus-client = '^0.20'
+prometheus-client = '^0.22'
 rand = '^0.8'
-replace_with = "^0.1"
-rmp = '^0.8'
 rmp-serde = '^1.0'
-rust-s3 = '^0.33'
+rust-s3 = '^0.35'
 serde_json = '^1.0'
+serde_sqlite_jsonb = "0.1.0"
 serde_urlencoded = '^0.7'
-serde_with = { version = '^2.0', features = ["json"] }
+serde_with = { version = '^3.5', features = ["json", "chrono_0_4"] }
 sha3 = '^0.10'
-tokio-stream = { version = '^0.1', features = ["sync"] }
 tokio-native-tls = '^0.3'
-tokio-tungstenite = '^0.18'
-git-version = "^0.3"
+tokio-stream = { version = '^0.1', features = ["sync"] }
+tokio-tungstenite = '^0.26'
+toml = "0.8.19"
 
 [dependencies.chrono]
 version = '^0.4'
 features = ['serde']
 
 [dependencies.diesel]
-version = '^2.0'
+version = "^2.2"
 default-features = false
-features = [
-    'chrono',
-    'postgres',
-    'r2d2',
-    'i-implement-a-third-party-backend-and-opt-into-breaking-changes'
-]
+features = ["chrono", "sqlite", "r2d2", "serde_json", "returning_clauses_for_sqlite_3_35"]
 
 [dependencies.hyper]
-version = '^0.14'
+version = '^1.5'
 features = [
     'client',
     'server',
-    'stream',
     'http1',
 ]
 
@@ -97,5 +81,5 @@ version = '^0.10'
 features = ['std']
 
 [dependencies.tokio]
-version = '^1.0'
+version = '^1.39'
 features = ['full']

@@ -1,0 +1,14 @@
+#!/bin/sh
+
+cd $(dirname $0)
+DIESEL=diesel
+for config_file in diesel*.toml; do
+	FILENAME="$(basename "${config_file}" .toml).sqlite"
+	URL="sqlite://$(readlink -f .)/${FILENAME}"
+	test ! -f "$FILENAME" || rm "$FILENAME"
+	echo Resetting database...
+	"${DIESEL}" database reset --config-file "${config_file}" --database-url "$URL"
+	echo Generating Schema...
+	"${DIESEL}" print-schema --config-file "${config_file}" --database-url "$URL"
+	rm -f "$FILENAME"
+done

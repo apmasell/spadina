@@ -12,15 +12,15 @@ pub enum Interaction {
 }
 
 pub struct WorldElement<T: Renderer> {
-  id: T::Id,
-  data: T,
-  click: Option<Action>,
-  drag_source: Option<u32>,
-  drag_recipient: (),
+  pub id: T::Id,
+  pub data: T,
+  pub click: Option<Action>,
+  pub drag_source: Option<u32>,
+  pub drag_recipient: (),
 }
 
 pub struct Dialog {
-  controls: Vec<Widget>,
+  pub controls: Vec<Widget>,
 }
 pub enum Widget {
   Bool { property: String, label: String },

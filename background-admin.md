@@ -1,5 +1,5 @@
 # Background for Server Administrators
-Running a Spadina server allows you to create a control a community.
+Running a Spadina server allows you to create and shepard a community.
 It is part technical and part social. You will be responsible for how players
 on your server conduct themselves when visiting other servers and other
 administrators can choose to cut _all_ your players off from the network.
@@ -58,24 +58,6 @@ First, create a directory for the server configuration:
 
     sudo mkdir /etc/spadina
 
-You will need the [PostgrSQL](https://www.postgresql.org/) database. On Debian/Ubuntu, invoke:
-
-    sudo apt-get install postgesql
-
-Generate a random database password:
-
-    DB_PASS=$(openssl rand -base64 32)
-    echo $DB_PASS
-
-Then, create a new database for Spadina. On Debian/Ubuntu, invoke:
-
-    sudo -u postgres psql -c "CREATE ROLE spadina PASSWORD '"${DB_PASS}"' LOGIN; CREATE DATABASE spadina OWNER spadina;"
-
-For other operating systems, connect to the database as the administrator and then, substituting `DB_PASS` with the real password, issue:
-
-    CREATE ROLE spadina PASSWORD 'DB_PASS' LOGIN;
-    CREATE DATABASE spadina OWNER spadina;
-
 Now, install the server itself. If you have downloaded a binary:
 
     sudo cp spadina-server /usr/bin
@@ -97,45 +79,34 @@ Create `/etc/spadina.config` and we will modify this file to match your
 needs:
 
 ```
-{
-  "asset_store": ...,
-  "authentication": ...,
-  "bind_address": null,
-  "certificate": null,
-  "database_url": "postgres://spadina:DB_PASS@localhost/spadina",
-  "default_realm": ...,
-  "name": ...,
-  "unix_socket": "/var/run/spadina.socket"
-}
+name = spadina.example.com
+unix_socket = /var/run/spadina.socket
 ```
 
 First, `"name"` should be set to the full name for your server (_e.g._,
 `spadina.example.com`). If this name is incorrect, federation will break.
 
-Make sure to replace `DB_PASS` in `"database_url"` with the real database
-password.
-
 An SSL certificate is required to make Spadina work. There are two ways to
 make this happen:
 
-- create a certificate in PCKS12 format and set `"certificate"` to be the path
-  to this file
+- create a certificate in PCKS12 format and set `certificate = "/path/to/certificate.pcks12"`
 - set up a reverse proxy
 
 When using the certificate, the server will automatically bind to port 443 to
 accept secure connections. When using the reverse proxy, you can change the
-`"bind_address"` to be the port where the server should run (_e.g._,
-`127.0.0.1:8080`). If you wish to use a reverse proxy, see [Using Nginx as a
-Reverse Proxy](#nginx-reverse-proxy).
+`bind_address = "127.0.0.1:8080"` to be the port where the server should run.
+If you wish to use a reverse proxy, see [Using Nginx as a Reverse
+Proxy](#nginx-reverse-proxy).
 
-The server needs a place to store assets from other servers and `"asset_store"`
+The server needs a place to store assets from other servers and `[asset_store.type]`
 is where that configuration goes. Assets can be stored on local disk or in a
 cloud storage system such as S3.
 
 To store assets on local disk, use:
 
 ```
-"asset_store": { "type": "FileSystem ", "directory": "/path/to/assets" },
+[asset_store.file_system]
+directory = "/path/to/assets"
 ```
 
 and make sure that the directory can be written to by the user the server runs
@@ -145,35 +116,25 @@ If running inside Google Cloud, the Google Cloud Storage can be used. Create a
 bucket and then set:
 
 ```
-"asset_store": { "type": "GoogleCloud", bucket: "your-bucket-name" },
+[asset_store.google_cloud]
+bucket = "your-bucket-name"
 ```
 
 If using S3 or an S3-compatible service (_e.g._ Minio), create a bucket and use:
 
 ```
-"asset_store": {
-  "type": "S3",
-  "bucket": "your-bucket-name",
-  "region": "us-east-1",
-  "access_key": "ASDAFLSDALKG",
-  "secret_key": "BGKLEGRLKW"
-}
+[asset_store.s3]
+bucket = "your-bucket-name",
+region = "us-east-1",
+access_key = "ASDAFLSDALKG",
+secret_key = "BGKLEGRLKW"
 ```
 
 The server will need assets to initially start the game. You must pick an asset
 pack and load it into your asset store. The asset pack will also include a
 command to create a home realm.
 
-TODO: Download asset pack from XXX. If using S3 or Google Cloud, upload all the asset files into the bucket. For local installation, run:
-
-```
-spadina-cli install-assets asset-pack.zip /path/to/assets
-```
-
-You will also need to install at least one realm asset to use as the home
-realm. Set `"default_realm"` to the correct asset ID for you asset pack.
-
-Your players will need to log in and the `"authentication"` setting controls
+Your players will need to log in and the `[authentication]` setting controls
 how that happens. There are two authentication mechanisms:
 
 - password-based where the players send a password to the server and it checks
@@ -190,33 +151,10 @@ ever-changing 6-digit passwords used in some two-factor authentication systems.
 Players will have to have an application to generate them (_e.g._, Google
 Authenticator or a Yubikey).
 
-| Method | Type | Configuration | Details |
-|--------|------|---------------|---------|
-| Manually-managed OTP database | OTP | `{ "type": "DatabaseOTPs " }` | This uses OTPs stored in a database. Multiple OTPs can be assigned to a user and the administrator must manage the OTPs manually. See [managing the OTP database](#otpdb) |
-| LDAP Server | Password | `{ "type": "LDAP", "url": "ldaps://...", "bind_dn": "...", "bind_pw": "...", "search_base": "...", "account_attr": "..." }` | Uses an LDAP server (such as ActiveDirectory or OpenLDAP) as a password store. The LDAP administrator should create an account for Spadina to do searching as `"bind_dn"` and with the password in `"bind_pw"`. `"account_attr"` is the name of the attribute that will be the player's login (usually `"uid"` for OpenLDAP and `"sAMAccountName"` for ActiveDirectory. |
-| Multiple OpenID Connect services | OpenId Connect | `{ "type": "MultipleOpenIdConnect", "providers": [ {"provider": {"type": "Google" }, "client_id": "...", "client_secret": ...}, ...] }` | Works much like Open ID Connect, but with a choice of providers. See the Open ID Connect information below. |
-| Fixed OTPs | OTP | `{ "type": "OTPs", "users": { "andre": "aslkjasdklask", ...} }` | Uses a fixed list of OTPs for each user. Updating this list requires restarting the server, so this method is not recommended for production. |
-| Single OpenID Connect service | Open ID Connect | `{ "type": "OpenIdConnect", "provider": {"type": "Google"}, "client_id": "...", "client_secret": "..." }` | Use a single OpenID Connect service for authentication. See details about OpenID Connect below. |
-| Fixed Passwords | Password | `{ "type": "Passwords", "users": { "andre": "password", ...} }` | Uses exact passwords provided in the configuration file. *Do not use in production.* This is insecure and meant for debugging. |
-| phpBB Forum | Password | `{ "type": "PhpBB", "connection": "...", "database": "..." }` | Uses an existing phpBB forum for passwords. This requires a database connection to the same one used by the forum. `"database"` is `"MySQL"` or `"PostgreSQL"` and `"connection"` is the URL to the database. Any account that is locked in phpBB will also be locked in Spadina. |
-| Myst Online: Uru Live server | Password | `{ "type": "Uru", "connection": "..." }` | Uses a Myst Online server as a source for passwords. `"connection"` is the URL of the MOUL database. |
+For authentication using a database, a database connection URL for `sqlite://`,
+`postgresql://`, or `mysql://` may be used.
 
-For the OpenID Connect services, the server must be registered with the
-provider. When registering, a redirect/return/callback URL must be provided.
-This will be `https://spadina.example.com/api/auth/oidc/auth` where
-`spadina.example.com` is the name of your server. The registration process
-will provide a client ID and client secret, which must be placed in the
-configuration file.
-
-| Service | Type | Registration Instructions |
-|---------|------|---------------------------|
-| Apple |`{"type": "Apple"}` | [Register Apps in the Apple Developer Portal](https://auth0.com/docs/connections/apple-siwa/set-up-apple) |
-| Facebook |`{"type": "Facebook"}` | [Create an App](https://developers.facebook.com/docs/development/create-an-app) using a _Consumer_ app and *only step 1* of [Facebook Login for the Web](https://developers.facebook.com/docs/facebook-login/web) |
-| Google | `{"type": "Google"}` | [Setting up OAuth 2.0](https://developers.google.com/identity/protocols/oauth2/openid-connect) |
-| LinkedIn |`{"type": "LinkedIn"}` |
-| Microsoft | `{ "type": "Microsoft", "tenant": null }` | [Register an application with the Microsoft identity platform](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app) Microsoft supports individual organisation registration (tenants). If you have selected one, enter it in `"tenant"`. If `"tentant"` is null, Spadina will use `"common"`, which corresponds to _Accounts in any organizational directory and personal Microsoft accounts_. |
-| Other | `{ "type": "Custom", "url": ... }` | For using a service not listed here. The service must supported OpenID Connect with Discovery. The URL provided will be probed for `/.well-known/openid-configuration` to discover its configuration. |
-
+See [supported authentication mechanisms](#supported-auth) for the configuration.
 
 Start your server using:
 
@@ -227,6 +165,106 @@ systemctl start spadina
 Check that the server is online by visiting the web site for it.
 
 And that should be all!
+
+<a name="supported-auth">
+### Suported Authentication
+
+#### Manually-managed OTP database (OTP)
+Uses one-time-passwords stored in a database. Multiple OTPs can be assigned to a user and the administrator must manage the OTPs manually.
+```
+[authentication]
+database_otps = "sqlite://path/to/db.sqlite"
+```
+
+#### LDAP Server (Password)
+Uses an LDAP server (such as ActiveDirectory or OpenLDAP) as a password store. The LDAP administrator should create an account for Spadina to do searching as `bind_dn` and with the password in `bind_pw`. `account_attr` is the name of the attribute that will be the player's login (usually `"uid"` for OpenLDAP and `"sAMAccountName"` for ActiveDirectory.)
+
+The `admin_query` and `create_query` values are optional. If provided, they will determine if a players has administrative and upload rights, respectively. If absent, all users will have those privileges.
+
+```
+[authentication.ldap]
+account_attr = "uid"
+admin_query = "(&(objectClass=user)(memberof=CN=Administrators,OU=Users,DC=example,DC=com))"
+bind_dn = "spadina"
+bind_pw = "secret_password"
+create_query = "(&(objectClass=user)(memberof=CN=Creatives,OU=Users,DC=example,DC=com))"
+search_base = "ou=Users"
+server_url = "ldaps://ldap.example.com"
+user_query = "(objectClass=user)"
+```
+
+#### OpenID Connect (OpenID)
+Allows connecting to one or more OpenID Connect-compatible services. 
+For the OpenID Connect services, the server must be registered with the
+provider. When registering, a redirect/return/callback URL must be provided.
+This will be `https://spadina.example.com/api/auth/oidc/auth` where
+`spadina.example.com` is the name of your server. The registration process
+will provide a client ID and client secret, which must be placed in the
+configuration file.
+
+```
+[authentication.open_id_connect]
+connection = "sqlite://etc/spadina/open_id.db"
+registration = "Invite"
+
+[[authentication.open_id_connect.providers]]
+client_id = "whatever_id"
+client_secret = "whatever_secret"
+provider = "Google"
+```
+
+For the OpenID Connect services, the server must be registered with the
+provider. When registering, a redirect/return/callback URL must be provided.
+This will be `https://spadina.example.com/api/auth/oidc/auth` where
+`spadina.example.com` is the name of your server. The registration process
+will provide a client ID and client secret, which must be placed in the
+configuration file.
+
+The `[[authentication.open_id_connect.providers]]` section can be repeated for
+each of the services available.
+
+| Service | Type | Registration Instructions |
+|---------|------|---------------------------|
+| Apple |`provider = "apple"` | [Register Apps in the Apple Developer Portal](https://auth0.com/docs/connections/apple-siwa/set-up-apple) |
+| Facebook |`provider = "facebook"` | [Create an App](https://developers.facebook.com/docs/development/create-an-app) using a _Consumer_ app and *only step 1* of [Facebook Login for the Web](https://developers.facebook.com/docs/facebook-login/web) |
+| Google | `provider = "google"` | [Setting up OAuth 2.0](https://developers.google.com/identity/protocols/oauth2/openid-connect) |
+| LinkedIn |`provider = "LinkedIn"` |
+| Microsoft | `provider = "microsoft"` or `provider = { microsoft_tenant = "00000000-0000-0000-0000-000000000000"` | [Register an application with the Microsoft identity platform](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app) Microsoft supports individual organisation registration (tenants). If you have selected one, enter it using the second syntax. When the first syntax is used, Spadina will use `"common"`, which corresponds to _Accounts in any organizational directory and personal Microsoft accounts_. |
+| Other | `provider = { url = "https://oidc.whatever.com", name = "Whatever" }` | For using a service not listed here. The service must supported OpenID Connect with Discovery. The URL provided will be probed for `/.well-known/openid-configuration` to discover its configuration. |
+
+#### Fixed OTPs (OTP)
+Uses a fixed list of OTPs for each user. Updating this list requires restarting the server, so this method is not recommended for production.
+
+```
+[authentication.otps]
+andre = "JEQGI33OE52CA23ON53SA53IMF2CAZDBORQSAYLDOR2WC3DMPEQGY2LWMVZSA2DFOJSQ===="
+claidi = "KNQW2ZJAMZXXEIDUNBUXGIDPNZSSA5DPN4======"
+```
+| Single OpenID Connect service | Open ID Connect | `{ "type": "OpenIdConnect", "provider": {"type": "Google"}, "client_id": "...", "client_secret": "..." }` | Use a single OpenID Connect service for authentication. See details about OpenID Connect below. |
+
+#### Fixed Passwords (Password)
+Uses exact passwords provided in the configuration file. *Do not use in production.* This is insecure and meant for debugging.
+
+```
+[authetnication.passwords]
+andre = "notsecure"
+```
+
+#### phpBB Forum (Password)
+Uses an existing phpBB forum for passwords. This requires a database connection to the same one used by the forum. Any account that is locked in phpBB will also be locked in Spadina.
+
+```
+[authetnication]
+php_bb = "mysql://phpbb_user:secret@localhost/phpbb_db"
+```
+
+#### Myst Online: Uru Live server (Password)
+Uses a Myst Online server as a source for passwords. Only PostgreSQL is supported.
+
+```
+[authentication]
+uru = "postgresql://uru_user:secret@localhost/moul"
+```
 
 <a name="nginx-reverse-proxy">
 ### Using Nginx as a Reverse Proxy
@@ -265,20 +303,3 @@ provider), you can forward the socket using SSH:
 ```
 ssh -R /srv/spadina/.spadina.socket:/home/andre/.spadina.socket spadina@example.com
 ```
-
-## Starting the Journey
-When a new player joins your server, they will only be allowed to access their
-home realm. Their home realm must have a trigger to _debut_ the player deciding
-that they are ready to interact with the outside world. As the administrator,
-you can list possible realms for your players. This is part of the
-configuration of the server and the realm must be a train-car realm.
-
-## Train-Car Realms
-The server administrator can add realm descriptions to use as train cars. The
-server will choose realms the player has not played as train cars. Not all
-realms can be used as train cars (they must have a link to the next car). Once
-added, train cars cannot be deleted. When adding a realm, the administrator can
-choose if this realm is an appropriate first realm for a player. If multiple
-realms are available as first realms, the system will choose one randomly. A
-realm that is marked as appropriate for a first realm can also be used for
-non-first train cars.
