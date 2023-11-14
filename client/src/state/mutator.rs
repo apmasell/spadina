@@ -11,7 +11,7 @@ pub trait Mutable {
   type Failure;
   type Name: Copy + Hash + Eq;
   type Output;
-  fn into_operation(self, id: i32) -> (Self::Name, spadina_core::ClientRequest<String>);
+  fn into_operation(self, id: i32) -> (Self::Name, spadina_core::net::server::ClientRequest<String>);
 }
 
 impl<M: Mutable> Mutator<M> {
@@ -61,14 +61,14 @@ pub struct AssetUploadRequest {
 impl Mutable for AssetUploadRequest {
   const OPERATION: super::InflightOperation = super::InflightOperation::AssetCreation;
 
-  type Failure = spadina_core::AssetError;
+  type Failure = spadina_core::net::server::AssetError;
   type Name = AssetUpload;
   type Output = String;
 
-  fn into_operation(self, id: i32) -> (Self::Name, spadina_core::ClientRequest<String>) {
+  fn into_operation(self, id: i32) -> (Self::Name, spadina_core::net::server::ClientRequest<String>) {
     (
       AssetUpload(id),
-      spadina_core::ClientRequest::AssetCreate {
+      spadina_core::net::server::ClientRequest::AssetCreate {
         id,
         asset_type: self.asset_type,
         name: self.name,
@@ -89,8 +89,8 @@ impl Mutable for () {
   type Name = Invitation;
   type Output = String;
 
-  fn into_operation(self, id: i32) -> (Self::Name, spadina_core::ClientRequest<String>) {
-    (Invitation(id), spadina_core::ClientRequest::Invite { id })
+  fn into_operation(self, id: i32) -> (Self::Name, spadina_core::net::server::ClientRequest<String>) {
+    (Invitation(id), spadina_core::net::server::ClientRequest::Invite { id })
   }
 }
 
@@ -106,8 +106,8 @@ impl Mutable for String {
 
   type Output = ();
 
-  fn into_operation(self, id: i32) -> (Self::Name, spadina_core::ClientRequest<String>) {
-    (RealmDeletion(id), spadina_core::ClientRequest::RealmDelete { id, asset: self, owner: None })
+  fn into_operation(self, id: i32) -> (Self::Name, spadina_core::net::server::ClientRequest<String>) {
+    (RealmDeletion(id), spadina_core::net::server::ClientRequest::LocationDelete { id, asset: self, owner: None })
   }
 }
 impl Mutable for spadina_core::realm::LocalRealmTarget<String> {
@@ -119,7 +119,7 @@ impl Mutable for spadina_core::realm::LocalRealmTarget<String> {
 
   type Output = ();
 
-  fn into_operation(self, id: i32) -> (Self::Name, spadina_core::ClientRequest<String>) {
-    (RealmDeletion(id), spadina_core::ClientRequest::RealmDelete { id, asset: self.asset, owner: Some(self.owner) })
+  fn into_operation(self, id: i32) -> (Self::Name, spadina_core::net::server::ClientRequest<String>) {
+    (RealmDeletion(id), spadina_core::net::server::ClientRequest::LocationDelete { id, asset: self.asset, owner: Some(self.owner) })
   }
 }

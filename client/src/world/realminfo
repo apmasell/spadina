@@ -1,0 +1,358 @@
+                    match asset_store.pull(&asset).await {
+                      Err(spadina_core::asset_store::LoadError::Unknown) => {
+                        state.deliver(spadina_core::ClientRequest::AssetPull { principal: asset.clone() }).await;
+                        asset_dispatch.entry(asset.clone()).or_default().push(AssetDispatch::RealmAsset(assets.clone()));
+                        
+                      }
+                      Err(e) => {
+                        state
+                          .deliver(spadina_core::ClientRequest::LocationChange { location: spadina_core::location::LocationRequest::NoWhere })
+                          .await;
+                        (
+                          location::Location::NoWhere,
+                          ScreenState::Lost(Some(std::borrow::Cow::Owned(format!("Failed to load assets for “{}”: {}", &name, e)))),
+                        )
+                      }
+                      Ok(asset) => match load_realm::load::<S>(&asset_store, &realm_info).await {
+                        load_realm::RealmLoad::Fetch(children) => {
+                          let assets = children.len();
+                          let dispatch = AssetDispatch::RealmAsset(assets.into());
+
+                          for principal in children {
+                            asset_dispatch.entry(principal.clone()).or_default().push(dispatch.clone());
+                            state.deliver(spadina_core::ClientRequest::AssetPull { principal }).await;
+                          }
+                          (
+                            location::Location::LoadingRealmWithAsset {
+                              asset,
+                              messages: Default::default(),
+                              name: std::sync::Arc::new(std::sync::Mutex::new((name, in_directory))),
+                              owner,
+                              seed,
+                              server,
+                              settings: std::sync::Arc::new(std::sync::Mutex::new(settings)),
+                            },
+                            ScreenState::Loading { message, assets },
+                          )
+                        }
+                        load_realm::RealmLoad::Corrupt(msg) => {
+                          state
+                            .deliver(spadina_core::ClientRequest::LocationChange { location: spadina_core::location::LocationRequest::NoWhere })
+                            .await;
+                          (location::Location::NoWhere, ScreenState::Error(msg))
+                        }
+                        load_realm::RealmLoad::Loaded((world, paths)) => todo!(),
+                      },
+                    }
+
+{
+                      if count.fetch_sub(1, std::sync::atomic::Ordering::Relaxed) < 2 {
+                        match load_realm::load::<S>(&asset_store, &realm_info).await {
+                          load_realm::RealmLoad::Fetch(children) => {
+                            if let ScreenState::Loading { assets, .. } = &mut *screen.lock().unwrap() {
+                              count.store(children.len(), std::sync::atomic::Ordering::Relaxed);
+                            };
+                            for principal in children {
+                              asset_dispatch.entry(principal.clone()).or_default().push(AssetDispatch::RealmAsset(count.clone()));
+                              state.deliver(spadina_core::ClientRequest::AssetPull { principal }).await;
+                            }
+                          }
+                          load_realm::RealmLoad::Corrupt(msg) => {
+                            *screen.lock().unwrap() = ScreenState::Error(msg);
+                          }
+                          load_realm::RealmLoad::Loaded((world, paths)) => {
+                            let world = current_location.finish_loading(world, paths);
+                            *screen.lock().unwrap() = ScreenState::InWorld(world);
+                          }
+                        }
+                      }
+                    }
+
+impl<S> RealmInfo<S> {
+  pub fn replace<T>(&self, state: T) -> RealmInfo<T> {
+    RealmInfo {
+      access: self.access.clone(),
+      announcements: self.announcements.clone(),
+      asset: self.asset.clone(),
+      jitter: self.jitter.clone(),
+      messages: self.messages.clone(),
+      name: self.name.clone(),
+      paths: self.paths.clone(),
+      owner: self.owner.clone(),
+      requests: self.requests.clone(),
+      seed: self.seed,
+      server: self.server.clone(),
+      settings: self.settings.clone(),
+      state,
+    }
+  }
+}
+impl<W> RealmInfo<std::sync::Arc<W>> {
+  fn capture<'a, S: WorldBuilder<World = W>>(&'a self, client: &'a ServerConnection<S>) -> RealmInfoRef<'a, S> {
+    RealmInfoRef { client, realm_info: self }
+  }
+}
+impl<'a, S: WorldBuilder> RealmInfoRef<'a, S> {
+  pub fn access(
+    &self,
+  ) -> cache::KeyCacheRef<
+    spadina_core::realm::RealmRequest<String>,
+    (Vec<spadina_core::access::AccessControl<spadina_core::access::SimpleAccess>>, spadina_core::access::SimpleAccess),
+    S,
+  > {
+    self.realm_info.access.capture(self.client)
+  }
+  pub fn owner(&self) -> &str {
+    &self.realm_info.owner
+  }
+  pub fn server(&self) -> &str {
+    &self.realm_info.server
+  }
+  pub fn asset(&self) -> &str {
+    &self.realm_info.asset
+  }
+  pub fn seed(&self) -> i32 {
+    self.realm_info.seed
+  }
+  pub fn jitter(&self) -> jitter::Iter<30> {
+    self.realm_info.jitter.iter()
+  }
+  pub fn name<R>(&self, process: impl FnOnce(&str, bool) -> R) -> R {
+    let guard = self.realm_info.name.lock().unwrap();
+    process(&guard.0, guard.1)
+  }
+  pub fn announcements<R>(&self, process: impl FnOnce(&[spadina_core::realm::RealmAnnouncement<String>], bool) -> R) -> R {
+    let guard = self.realm_info.announcements.lock().unwrap();
+    if guard.0.as_ref().map(|t| *t < chrono::Utc::now() - chrono::Duration::minutes(30)).unwrap_or(true) {
+      self
+        .client
+        .outbound_tx
+        .send(ServerRequest::Deliver(spadina_core::ClientRequest::InRealm { request: spadina_core::realm::RealmRequest::AnnouncementList }))
+        .unwrap();
+    }
+    process(guard.1.as_slice(), guard.0.is_some())
+  }
+  pub fn announcements_add(&self, announcement: spadina_core::realm::RealmAnnouncement<String>) {
+    let id = self.client.cache_state.add_operation(InflightOperation::RealmAnnouncements);
+    self
+      .client
+      .outbound_tx
+      .send(ServerRequest::Deliver(spadina_core::ClientRequest::InRealm {
+        request: spadina_core::realm::RealmRequest::AnnouncementAdd { id, announcement },
+      }))
+      .unwrap();
+  }
+  pub fn announcements_clear(&self) {
+    let id = self.client.cache_state.add_operation(InflightOperation::RealmAnnouncements);
+    self
+      .client
+      .outbound_tx
+      .send(ServerRequest::Deliver(spadina_core::ClientRequest::InRealm { request: spadina_core::realm::RealmRequest::AnnouncementClear { id } }))
+      .unwrap();
+  }
+  pub fn messages<R>(&self, process: impl FnOnce(&[spadina_core::location::LocationMessage<String>]) -> R) -> R {
+    let messages = self.realm_info.messages.lock().unwrap();
+    process(&messages.as_slice())
+  }
+  pub fn messages_fetch(&self, from: chrono::DateTime<chrono::Utc>, to: chrono::DateTime<chrono::Utc>) {
+    if from < to {
+      self.client.outbound_tx.send(ServerRequest::Deliver(spadina_core::ClientRequest::LocationMessagesGet { from, to })).unwrap();
+    }
+  }
+
+  pub fn messages_send(&self, body: spadina_core::communication::MessageBody<String>) {
+    self.client.outbound_tx.send(ServerRequest::Deliver(spadina_core::ClientRequest::LocationMessageSend { body })).unwrap();
+  }
+  pub fn requests<R>(&self, process: impl FnOnce(&[PlayerRequest]) -> Vec<PlayerResponse>) {
+    let mut guard = self.realm_info.requests.lock().unwrap();
+    for response in process(&*guard) {
+      if let Some(position) = guard.iter().position(|i| match response.kind {
+        PlayerResponseKind::Follow => {
+          if let PlayerRequest::Follow(PlayerRequestFollow { id, .. }) = i {
+            *id == response.id
+          } else {
+            false
+          }
+        }
+        PlayerResponseKind::Emote => {
+          if let PlayerRequest::Emote(PlayerRequestEmote { id, .. }) = i {
+            *id == response.id
+          } else {
+            false
+          }
+        }
+      }) {
+        self
+          .client
+          .outbound_tx
+          .send(ServerRequest::Deliver(match guard.remove(position) {
+            PlayerRequest::Follow(PlayerRequestFollow { id, .. }) => spadina_core::ClientRequest::FollowResponse { id, ok: response.agree },
+            PlayerRequest::Emote(PlayerRequestEmote { id, .. }) => spadina_core::ClientRequest::ConsensualEmoteResponse { id, ok: response.agree },
+          }))
+          .unwrap();
+      }
+    }
+  }
+  pub fn settings<R>(&self, process: impl FnOnce(&spadina_core::realm::RealmSettings<String>) -> R) -> R {
+    let guard = self.realm_info.settings.lock().unwrap();
+    process(&*guard)
+  }
+  pub fn settings_update(&self, name: String, value: spadina_core::realm::RealmSetting<String>) -> Result<(), SettingError> {
+    let guard = self.realm_info.settings.lock().unwrap();
+    match guard.get(&name) {
+      None => Err(SettingError::BadName),
+      Some(old_value) => {
+        if old_value.type_name() == value.type_name() {
+          self
+            .client
+            .outbound_tx
+            .send(ServerRequest::Deliver(spadina_core::ClientRequest::InRealm {
+              request: spadina_core::realm::RealmRequest::ChangeSetting { name, value },
+            }))
+            .unwrap();
+          Ok(())
+        } else {
+          Err(SettingError::BadType)
+        }
+      }
+    }
+  }
+  pub fn emote(&self, emote: String, kind: EmoteKind) {
+    self
+      .client
+      .outbound_tx
+      .send(ServerRequest::Deliver(match kind {
+        EmoteKind::Undirected => spadina_core::ClientRequest::InRealm {
+          request: spadina_core::realm::RealmRequest::Perform(vec![spadina_core::realm::Action::Emote {
+            animation: spadina_core::realm::CharacterAnimation::Custom(emote),
+            duration: todo!(),
+          }]),
+        },
+        EmoteKind::Directed(direction) => spadina_core::ClientRequest::InRealm {
+          request: spadina_core::realm::RealmRequest::Perform(vec![
+            spadina_core::realm::Action::Rotate { direction },
+            spadina_core::realm::Action::Emote { animation: spadina_core::realm::CharacterAnimation::Custom(emote), duration: todo!() },
+          ]),
+        },
+        EmoteKind::Consensual(player) => spadina_core::ClientRequest::ConsensualEmoteRequest { emote, player },
+      }))
+      .unwrap();
+  }
+  pub fn follow(&self, player: spadina_core::player::PlayerIdentifier<String>) {
+    self.client.outbound_tx.send(ServerRequest::Deliver(spadina_core::ClientRequest::FollowRequest { player })).unwrap();
+  }
+  pub fn kick(&self, target: spadina_core::player::PlayerIdentifier<String>) {
+    self
+      .client
+      .outbound_tx
+      .send(ServerRequest::Deliver(spadina_core::ClientRequest::InRealm { request: spadina_core::realm::RealmRequest::Kick { id, target } }))
+      .unwrap();
+  }
+  pub fn find_path(&self, location: &spadina_core::realm::Point) -> Result<Vec<spadina_core::realm::Point>, ()> {
+    todo!();
+  }
+
+  pub fn perform(&self, target: Target) {
+    if let Ok(points) = self.find_path(match &target {
+      Target::Move(p) => p,
+      Target::Interact(p, _, _) => p,
+    }) {
+      let mut actions: Vec<_> = points.into_iter().map(spadina_core::realm::Action::Move).collect();
+      if let Target::Interact(at, target, interaction) = target {
+        actions.push(spadina_core::realm::Action::Interaction { target, interaction });
+      }
+
+      self
+        .client
+        .outbound_tx
+        .send(ServerRequest::Deliver(spadina_core::ClientRequest::InRealm(spadina_core::realm::RealmRequest::Perform(actions))))
+        .unwrap();
+    }
+  }
+}
+impl<W> ScreenState<RealmInfo<std::sync::Arc<W>>, std::borrow::Cow<'static, str>> {
+  pub fn capture<'a, S: WorldBuilder<World = W>>(&'a self, client: &'a ServerConnection<S>) -> ScreenState<RealmInfoRef<'a, S>, &'a str> {
+    match self {
+      ScreenState::Quit => ScreenState::Quit,
+      ScreenState::Error(e) => ScreenState::Error(e.borrow()),
+      ScreenState::Busy(m) => ScreenState::Busy(m.borrow()),
+      ScreenState::InTransit => ScreenState::InTransit,
+      ScreenState::Loading { message, assets } => ScreenState::Loading { message: message.borrow(), assets: *assets },
+      ScreenState::Lost(m) => ScreenState::Lost(m.as_ref().map(|m| m.borrow())),
+      ScreenState::Login => ScreenState::Login,
+      ScreenState::LoginPassword => ScreenState::LoginPassword,
+      ScreenState::InWorld(r) => ScreenState::InWorld(r.capture(client)),
+    }
+  }
+}
+{
+                if let Some(realm_info) = &current_location {
+                  match response {
+                    spadina_core::realm::RealmResponse::AccessChange { id, result: response } => {
+                      if let Some(operation) = cache_state.outstanding.lock().unwrap().remove(&id) {
+                        let failure = match response {
+                          spadina_core::UpdateResult::Success => None,
+                          spadina_core::UpdateResult::NotAllowed => Some(FailedOperation {
+                            created: operation.created,
+                            failed: chrono::Utc::now(),
+                            reason: std::borrow::Cow::Borrowed("Permission denied"),
+                            operation: operation.operation,
+                          }),
+                          spadina_core::UpdateResult::InternalError => Some(FailedOperation {
+                            created: operation.created,
+                            failed: chrono::Utc::now(),
+                            reason: std::borrow::Cow::Borrowed("Unknown internal error"),
+                            operation: operation.operation,
+                          }),
+                        };
+                        if let Some(failure) = failure {
+                          cache_state.failed_operations.lock().unwrap().push(failure);
+                        }
+                      }
+                    }
+                    spadina_core::realm::RealmResponse::AccessCurrent { target, rules: acls, default } => {
+                      realm_info.access.update(target, |v| *v = (acls, default))
+                    }
+                    spadina_core::realm::RealmResponse::AnnouncementUpdate { id, result: response } => {
+                      if let Some(operation) = cache_state.outstanding.lock().unwrap().remove(&id) {
+                        let failure = match response {
+                          spadina_core::UpdateResult::Success => None,
+                          spadina_core::UpdateResult::NotAllowed => Some(FailedOperation {
+                            created: operation.created,
+                            failed: chrono::Utc::now(),
+                            reason: std::borrow::Cow::Borrowed("Permission denied"),
+                            operation: operation.operation,
+                          }),
+                          spadina_core::UpdateResult::InternalError => Some(FailedOperation {
+                            created: operation.created,
+                            failed: chrono::Utc::now(),
+                            reason: std::borrow::Cow::Borrowed("Unknown internal error"),
+                            operation: operation.operation,
+                          }),
+                        };
+                        if let Some(failure) = failure {
+                          cache_state.failed_operations.lock().unwrap().push(failure);
+                        }
+                      }
+                    }
+                    spadina_core::realm::RealmResponse::Announcements(announcements) => {
+                      *realm_info.announcements.lock().unwrap() = (Some(chrono::Utc::now()), announcements);
+                    }
+                    spadina_core::realm::RealmResponse::NameChanged(name, in_directory) => *realm_info.name.lock().unwrap() = (name, in_directory),
+                    spadina_core::realm::RealmResponse::SettingChanged(name, value) => {
+                      if let RealmLoading::Active(state) = &realm_info.state {
+                        state.update_setting(&name, &value);
+                      }
+                      realm_info.settings.lock().unwrap().insert(name, value);
+                    }
+                    spadina_core::realm::RealmResponse::UpdateState { time, player, state } => {
+                      realm_info.jitter.update(time);
+                      if let RealmLoading::Active(world_state) = &realm_info.state {
+                        world_state.update(time, player, state);
+                      }
+                    }
+                  }
+                } else {
+                  state.deliver(spadina_core::ClientRequest::LocationChange { location: spadina_core::location::LocationRequest::NoWhere }).await;
+                }
+              }

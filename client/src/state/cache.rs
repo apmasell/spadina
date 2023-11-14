@@ -6,7 +6,7 @@ pub struct CacheRef<'a, C: Cacheable, S> {
 }
 pub trait Cacheable: Clone + Default {
   const OPERATION: super::InflightOperation;
-  const REQUEST: spadina_core::ClientRequest<String>;
+  const REQUEST: spadina_core::net::server::ClientRequest<String>;
   fn stale() -> chrono::Duration;
 }
 pub trait Export<C: Cacheable> {
@@ -15,11 +15,11 @@ pub trait Export<C: Cacheable> {
   fn export(self, value: &C) -> Result<Self::Output, Self::Error>;
 }
 pub trait Update<C: Cacheable> {
-  fn into_request(self, id: i32, entry: &mut C, local_server: &str) -> spadina_core::ClientRequest<String>;
+  fn into_request(self, id: i32, entry: &mut C, local_server: &str) -> spadina_core::net::server::ClientRequest<String>;
 }
 #[derive(Clone)]
 pub struct KeyCache<O, V: KeyCacheable<O>>(super::Shared<std::collections::HashMap<V::Key, (chrono::DateTime<chrono::Utc>, V)>>);
-pub struct KeyCacheRef<'a, R: Into<spadina_core::ClientRequest<String>>, V: KeyCacheable<R>, S> {
+pub struct KeyCacheRef<'a, R: Into<spadina_core::net::server::ClientRequest<String>>, V: KeyCacheable<R>, S> {
   cache: &'a KeyCache<R, V>,
   client: &'a super::ServerConnection<S>,
 }
@@ -73,7 +73,7 @@ impl<'a, C: Cacheable, S> CacheRef<'a, C, S> {
     self.client.outbound_tx.send(super::connection::ServerRequest::Deliver(message)).unwrap();
   }
 }
-impl<R: Into<spadina_core::ClientRequest<String>>, V: KeyCacheable<R>> KeyCache<R, V> {
+impl<R: Into<spadina_core::net::server::ClientRequest<String>>, V: KeyCacheable<R>> KeyCache<R, V> {
   pub(crate) fn capture<'a, S>(&'a self, client: &'a super::ServerConnection<S>) -> KeyCacheRef<'a, R, V, S> {
     KeyCacheRef { cache: self, client }
   }
@@ -90,7 +90,7 @@ impl<O, K: KeyCacheable<O>> Default for KeyCache<O, K> {
     Self(Default::default())
   }
 }
-impl<'a, R: Into<spadina_core::ClientRequest<String>>, V: KeyCacheable<R>, S> KeyCacheRef<'a, R, V, S> {
+impl<'a, R: Into<spadina_core::net::server::ClientRequest<String>>, V: KeyCacheable<R>, S> KeyCacheRef<'a, R, V, S> {
   pub fn get<T>(&self, key: V::Key, process: impl FnOnce(Option<&chrono::DateTime<chrono::Utc>>, &V) -> T) -> T {
     let (result, update) = match self.cache.0.lock().unwrap().entry(key.clone()) {
       std::collections::hash_map::Entry::Occupied(o) => {
@@ -117,10 +117,10 @@ impl<'a, R: Into<spadina_core::ClientRequest<String>>, V: KeyCacheable<R>, S> Ke
     }
   }
 }
-impl Cacheable for (Vec<spadina_core::access::AccessControl<spadina_core::access::LocationAccess>>, spadina_core::access::LocationAccess) {
+impl Cacheable for (Vec<spadina_core::access::AccessControl<spadina_core::access::OnlineAccess>>, spadina_core::access::OnlineAccess) {
   const OPERATION: super::InflightOperation = super::InflightOperation::AccessChangeLocation;
 
-  const REQUEST: spadina_core::ClientRequest<String> = spadina_core::ClientRequest::AccessGetLocation;
+  const REQUEST: spadina_core::net::server::ClientRequest<String> = spadina_core::net::server::ClientRequest::AccessGetOnline;
 
   fn stale() -> chrono::Duration {
     chrono::Duration::minutes(15)
@@ -128,7 +128,7 @@ impl Cacheable for (Vec<spadina_core::access::AccessControl<spadina_core::access
 }
 impl Cacheable for Vec<spadina_core::communication::Announcement<String>> {
   const OPERATION: super::InflightOperation = super::InflightOperation::Announcements;
-  const REQUEST: spadina_core::ClientRequest<String> = spadina_core::ClientRequest::AnnouncementList;
+  const REQUEST: spadina_core::net::server::ClientRequest<String> = spadina_core::net::server::ClientRequest::AnnouncementList;
 
   fn stale() -> chrono::Duration {
     chrono::Duration::max_value()
@@ -136,7 +136,7 @@ impl Cacheable for Vec<spadina_core::communication::Announcement<String>> {
 }
 impl Cacheable for spadina_core::avatar::Avatar {
   const OPERATION: super::InflightOperation = super::InflightOperation::Avatar;
-  const REQUEST: spadina_core::ClientRequest<String> = spadina_core::ClientRequest::AvatarGet;
+  const REQUEST: spadina_core::net::server::ClientRequest<String> = spadina_core::net::server::ClientRequest::AvatarGet;
 
   fn stale() -> chrono::Duration {
     chrono::Duration::max_value()
@@ -144,7 +144,7 @@ impl Cacheable for spadina_core::avatar::Avatar {
 }
 impl Cacheable for std::collections::HashSet<spadina_core::communication::Bookmark<String>> {
   const OPERATION: super::InflightOperation = super::InflightOperation::BookmarkList;
-  const REQUEST: spadina_core::ClientRequest<String> = spadina_core::ClientRequest::BookmarksList;
+  const REQUEST: spadina_core::net::server::ClientRequest<String> = spadina_core::net::server::ClientRequest::BookmarksList;
   fn stale() -> chrono::Duration {
     chrono::Duration::minutes(15)
   }
@@ -153,14 +153,14 @@ impl Cacheable for std::collections::HashSet<spadina_core::communication::Bookma
 impl Cacheable for super::DirectMessageStats {
   const OPERATION: super::InflightOperation = super::InflightOperation::DirectMessageStats;
 
-  const REQUEST: spadina_core::ClientRequest<String> = spadina_core::ClientRequest::DirectMessageStats;
+  const REQUEST: spadina_core::net::server::ClientRequest<String> = spadina_core::net::server::ClientRequest::DirectMessageStats;
 
   fn stale() -> chrono::Duration {
     chrono::Duration::minutes(30)
   }
 }
-impl Cacheable for std::collections::HashSet<spadina_core::auth::PublicKey<String>> {
-  const REQUEST: spadina_core::ClientRequest<String> = spadina_core::ClientRequest::PublicKeyList;
+impl Cacheable for std::collections::HashSet<spadina_core::net::server::auth::PublicKey<String>> {
+  const REQUEST: spadina_core::net::server::ClientRequest<String> = spadina_core::net::server::ClientRequest::PublicKeyList;
   const OPERATION: super::InflightOperation = super::InflightOperation::PublicKey;
 
   fn stale() -> chrono::Duration {
@@ -170,7 +170,7 @@ impl Cacheable for std::collections::HashSet<spadina_core::auth::PublicKey<Strin
 impl Cacheable for Vec<spadina_core::realm::RealmDirectoryEntry<String>> {
   const OPERATION: super::InflightOperation = super::InflightOperation::RealmCalendarList;
 
-  const REQUEST: spadina_core::ClientRequest<String> = spadina_core::ClientRequest::CalendarRealmList;
+  const REQUEST: spadina_core::net::server::ClientRequest<String> = spadina_core::net::server::ClientRequest::CalendarLocationList;
 
   fn stale() -> chrono::Duration {
     chrono::Duration::max_value()
@@ -178,7 +178,7 @@ impl Cacheable for Vec<spadina_core::realm::RealmDirectoryEntry<String>> {
 }
 
 impl Cacheable for std::collections::BTreeSet<super::RemoteServer> {
-  const REQUEST: spadina_core::ClientRequest<String> = spadina_core::ClientRequest::Peers;
+  const REQUEST: spadina_core::net::server::ClientRequest<String> = spadina_core::net::server::ClientRequest::Peers;
   const OPERATION: super::InflightOperation = super::InflightOperation::RemoteServer;
 
   fn stale() -> chrono::Duration {
@@ -186,7 +186,7 @@ impl Cacheable for std::collections::BTreeSet<super::RemoteServer> {
   }
 }
 impl Cacheable for std::collections::HashSet<spadina_core::access::BannedPeer<String>> {
-  const REQUEST: spadina_core::ClientRequest<String> = spadina_core::ClientRequest::PeerBanList;
+  const REQUEST: spadina_core::net::server::ClientRequest<String> = spadina_core::net::server::ClientRequest::PeerBanList;
   const OPERATION: super::InflightOperation = super::InflightOperation::RemoteServer;
 
   fn stale() -> chrono::Duration {
@@ -195,20 +195,20 @@ impl Cacheable for std::collections::HashSet<spadina_core::access::BannedPeer<St
 }
 impl Cacheable for Vec<u8> {
   const OPERATION: super::InflightOperation = super::InflightOperation::Calendar;
-  const REQUEST: spadina_core::ClientRequest<String> = spadina_core::ClientRequest::CalendarIdentifier;
+  const REQUEST: spadina_core::net::server::ClientRequest<String> = spadina_core::net::server::ClientRequest::CalendarIdentifier;
 
   fn stale() -> chrono::Duration {
     chrono::Duration::max_value()
   }
 }
 
-impl KeyCacheable<spadina_core::ClientRequest<String>>
+impl KeyCacheable<spadina_core::net::server::ClientRequest<String>>
   for (Vec<spadina_core::access::AccessControl<spadina_core::access::SimpleAccess>>, spadina_core::access::SimpleAccess)
 {
   type Key = spadina_core::access::AccessTarget;
 
-  fn into_request(target: Self::Key) -> spadina_core::ClientRequest<String> {
-    spadina_core::ClientRequest::AccessGet { target }
+  fn into_request(target: Self::Key) -> spadina_core::net::server::ClientRequest<String> {
+    spadina_core::net::server::ClientRequest::AccessGet { target }
   }
 
   fn into_operation(target: &Self::Key) -> super::InflightOperation {
@@ -236,11 +236,11 @@ impl KeyCacheable<spadina_core::realm::RealmRequest<String>>
     chrono::Duration::minutes(1)
   }
 }
-impl KeyCacheable<spadina_core::ClientRequest<String>> for spadina_core::access::AccountLockState {
+impl KeyCacheable<spadina_core::net::server::ClientRequest<String>> for spadina_core::access::AccountLockState {
   type Key = String;
 
-  fn into_request(name: Self::Key) -> spadina_core::ClientRequest<String> {
-    spadina_core::ClientRequest::AccountLockStatus { name }
+  fn into_request(name: Self::Key) -> spadina_core::net::server::ClientRequest<String> {
+    spadina_core::net::server::ClientRequest::AccountLockStatus { name }
   }
 
   fn into_operation(name: &Self::Key) -> super::InflightOperation {
@@ -251,11 +251,11 @@ impl KeyCacheable<spadina_core::ClientRequest<String>> for spadina_core::access:
     chrono::Duration::minutes(15)
   }
 }
-impl KeyCacheable<spadina_core::ClientRequest<String>> for Vec<spadina_core::realm::RealmDirectoryEntry<String>> {
+impl KeyCacheable<spadina_core::net::server::ClientRequest<String>> for Vec<spadina_core::realm::RealmDirectoryEntry<String>> {
   type Key = spadina_core::realm::RealmSource<String>;
 
-  fn into_request(source: Self::Key) -> spadina_core::ClientRequest<String> {
-    spadina_core::ClientRequest::RealmsList { source }
+  fn into_request(source: Self::Key) -> spadina_core::net::server::ClientRequest<String> {
+    spadina_core::net::server::ClientRequest::LocationsList { source }
   }
 
   fn into_operation(source: &Self::Key) -> super::InflightOperation {
@@ -266,12 +266,12 @@ impl KeyCacheable<spadina_core::ClientRequest<String>> for Vec<spadina_core::rea
     chrono::Duration::minutes(5)
   }
 }
-impl KeyCacheable<spadina_core::ClientRequest<String>> for Vec<super::DirectMessage> {
+impl KeyCacheable<spadina_core::net::server::ClientRequest<String>> for Vec<super::DirectMessage> {
   type Key = spadina_core::player::PlayerIdentifier<String>;
 
-  fn into_request(player: Self::Key) -> spadina_core::ClientRequest<String> {
+  fn into_request(player: Self::Key) -> spadina_core::net::server::ClientRequest<String> {
     let now = chrono::Utc::now();
-    spadina_core::ClientRequest::DirectMessageGet { player, from: now - chrono::Duration::minutes(15), to: now }
+    spadina_core::net::server::ClientRequest::DirectMessageGet { player, from: now - chrono::Duration::minutes(15), to: now }
   }
 
   fn into_operation(player: &Self::Key) -> super::InflightOperation {
@@ -282,11 +282,11 @@ impl KeyCacheable<spadina_core::ClientRequest<String>> for Vec<super::DirectMess
     chrono::Duration::minutes(1)
   }
 }
-impl KeyCacheable<spadina_core::ClientRequest<String>> for spadina_core::player::PlayerLocationState<String> {
+impl KeyCacheable<spadina_core::net::server::ClientRequest<String>> for spadina_core::player::OnlineState<String> {
   type Key = spadina_core::player::PlayerIdentifier<String>;
 
-  fn into_request(player: Self::Key) -> spadina_core::ClientRequest<String> {
-    spadina_core::ClientRequest::PlayerCheck { player }
+  fn into_request(player: Self::Key) -> spadina_core::net::server::ClientRequest<String> {
+    spadina_core::net::server::ClientRequest::PlayerOnlineCheck { player }
   }
 
   fn into_operation(player: &Self::Key) -> super::InflightOperation {
@@ -304,69 +304,81 @@ pub struct Remove<T>(pub T);
 pub struct Set<T>(pub T);
 
 impl Update<Vec<spadina_core::communication::Announcement<String>>> for Add<spadina_core::communication::Announcement<String>> {
-  fn into_request(self, id: i32, entry: &mut Vec<spadina_core::communication::Announcement<String>>, _: &str) -> spadina_core::ClientRequest<String> {
+  fn into_request(
+    self,
+    id: i32,
+    entry: &mut Vec<spadina_core::communication::Announcement<String>>,
+    _: &str,
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.push(self.0.clone());
-    spadina_core::ClientRequest::AnnouncementAdd { id, announcement: self.0 }
+    spadina_core::net::server::ClientRequest::AnnouncementAdd { id, announcement: self.0 }
   }
 }
 impl Update<Vec<spadina_core::communication::Announcement<String>>> for Clear {
-  fn into_request(self, id: i32, entry: &mut Vec<spadina_core::communication::Announcement<String>>, _: &str) -> spadina_core::ClientRequest<String> {
+  fn into_request(
+    self,
+    id: i32,
+    entry: &mut Vec<spadina_core::communication::Announcement<String>>,
+    _: &str,
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.clear();
-    spadina_core::ClientRequest::AnnouncementClear { id }
+    spadina_core::net::server::ClientRequest::AnnouncementClear { id }
   }
 }
 impl Update<spadina_core::avatar::Avatar> for Set<spadina_core::avatar::Avatar> {
-  fn into_request(self, id: i32, entry: &mut spadina_core::avatar::Avatar, _: &str) -> spadina_core::ClientRequest<String> {
+  fn into_request(self, id: i32, entry: &mut spadina_core::avatar::Avatar, _: &str) -> spadina_core::net::server::ClientRequest<String> {
     *entry = self.0.clone();
-    spadina_core::ClientRequest::AvatarSet { id, avatar: self.0 }
+    spadina_core::net::server::ClientRequest::AvatarSet { id, avatar: self.0 }
   }
 }
-impl Update<std::collections::HashSet<spadina_core::auth::PublicKey<String>>> for Clear {
+impl Update<std::collections::HashSet<spadina_core::net::server::auth::PublicKey<String>>> for Clear {
   fn into_request(
     self,
     id: i32,
-    entry: &mut std::collections::HashSet<spadina_core::auth::PublicKey<String>>,
+    entry: &mut std::collections::HashSet<spadina_core::net::server::auth::PublicKey<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.clear();
-    spadina_core::ClientRequest::PublicKeyDeleteAll { id }
+    spadina_core::net::server::ClientRequest::PublicKeyDeleteAll { id }
   }
 }
-impl Update<std::collections::HashSet<spadina_core::auth::PublicKey<String>>> for Remove<String> {
+impl Update<std::collections::HashSet<spadina_core::net::server::auth::PublicKey<String>>> for Remove<String> {
   fn into_request(
     self,
     id: i32,
-    entry: &mut std::collections::HashSet<spadina_core::auth::PublicKey<String>>,
+    entry: &mut std::collections::HashSet<spadina_core::net::server::auth::PublicKey<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.retain(|p| p.fingerprint == self.0);
-    spadina_core::ClientRequest::PublicKeyDelete { id, name: self.0 }
+    spadina_core::net::server::ClientRequest::PublicKeyDelete { id, name: self.0 }
   }
 }
-impl Update<std::collections::HashSet<spadina_core::auth::PublicKey<String>>> for Remove<spadina_core::auth::PublicKey<String>> {
+impl Update<std::collections::HashSet<spadina_core::net::server::auth::PublicKey<String>>>
+  for Remove<spadina_core::net::server::auth::PublicKey<String>>
+{
   fn into_request(
     self,
     id: i32,
-    entry: &mut std::collections::HashSet<spadina_core::auth::PublicKey<String>>,
+    entry: &mut std::collections::HashSet<spadina_core::net::server::auth::PublicKey<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.retain(|p| p.fingerprint == self.0.fingerprint);
-    spadina_core::ClientRequest::PublicKeyDelete { id, name: self.0.fingerprint }
+    spadina_core::net::server::ClientRequest::PublicKeyDelete { id, name: self.0.fingerprint }
   }
 }
-impl Update<std::collections::HashSet<spadina_core::auth::PublicKey<String>>> for Add<Vec<u8>> {
+impl Update<std::collections::HashSet<spadina_core::net::server::auth::PublicKey<String>>> for Add<Vec<u8>> {
   fn into_request(
     self,
     id: i32,
-    entry: &mut std::collections::HashSet<spadina_core::auth::PublicKey<String>>,
+    entry: &mut std::collections::HashSet<spadina_core::net::server::auth::PublicKey<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
-    entry.insert(spadina_core::auth::PublicKey {
+  ) -> spadina_core::net::server::ClientRequest<String> {
+    entry.insert(spadina_core::net::server::auth::PublicKey {
       created: chrono::Utc::now(),
       last_used: None,
-      fingerprint: spadina_core::auth::compute_fingerprint(&self.0),
+      fingerprint: spadina_core::net::server::auth::compute_fingerprint(&self.0),
     });
-    spadina_core::ClientRequest::PublicKeyAdd { id, der: self.0 }
+    spadina_core::net::server::ClientRequest::PublicKeyAdd { id, der: self.0 }
   }
 }
 impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>> for Add<String> {
@@ -375,9 +387,9 @@ impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>>
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::access::BannedPeer<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.insert(spadina_core::access::BannedPeer::Peer(self.0.clone()));
-    spadina_core::ClientRequest::PeerBanSet { id, bans: vec![spadina_core::access::BannedPeer::Peer(self.0)] }
+    spadina_core::net::server::ClientRequest::PeerBanSet { id, bans: vec![spadina_core::access::BannedPeer::Peer(self.0)] }
   }
 }
 impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>> for Add<super::RemoteServer> {
@@ -386,9 +398,9 @@ impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>>
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::access::BannedPeer<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.insert(spadina_core::access::BannedPeer::Peer(self.0 .0.clone()));
-    spadina_core::ClientRequest::PeerBanSet { id, bans: vec![spadina_core::access::BannedPeer::Peer(self.0 .0)] }
+    spadina_core::net::server::ClientRequest::PeerBanSet { id, bans: vec![spadina_core::access::BannedPeer::Peer(self.0 .0)] }
   }
 }
 impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>> for Add<spadina_core::access::BannedPeer<String>> {
@@ -397,9 +409,9 @@ impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>>
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::access::BannedPeer<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.insert(self.0.clone());
-    spadina_core::ClientRequest::PeerBanSet { id, bans: vec![self.0] }
+    spadina_core::net::server::ClientRequest::PeerBanSet { id, bans: vec![self.0] }
   }
 }
 impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>> for Add<Vec<String>> {
@@ -408,9 +420,9 @@ impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>>
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::access::BannedPeer<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.extend(self.0.iter().map(|s| spadina_core::access::BannedPeer::Peer(s.clone())));
-    spadina_core::ClientRequest::PeerBanSet { id, bans: self.0.into_iter().map(|s| spadina_core::access::BannedPeer::Peer(s)).collect() }
+    spadina_core::net::server::ClientRequest::PeerBanSet { id, bans: self.0.into_iter().map(|s| spadina_core::access::BannedPeer::Peer(s)).collect() }
   }
 }
 impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>> for Add<Vec<super::RemoteServer>> {
@@ -419,9 +431,11 @@ impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>>
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::access::BannedPeer<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
-    let result =
-      spadina_core::ClientRequest::PeerBanSet { id, bans: self.0.iter().map(|s| spadina_core::access::BannedPeer::Peer(s.0.clone())).collect() };
+  ) -> spadina_core::net::server::ClientRequest<String> {
+    let result = spadina_core::net::server::ClientRequest::PeerBanSet {
+      id,
+      bans: self.0.iter().map(|s| spadina_core::access::BannedPeer::Peer(s.0.clone())).collect(),
+    };
     entry.extend(self.0.into_iter().map(|s| spadina_core::access::BannedPeer::Peer(s.0)));
     result
   }
@@ -432,8 +446,8 @@ impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>>
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::access::BannedPeer<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
-    let result = spadina_core::ClientRequest::PeerBanSet { id, bans: self.0.iter().map(|s| s.clone()).collect() };
+  ) -> spadina_core::net::server::ClientRequest<String> {
+    let result = spadina_core::net::server::ClientRequest::PeerBanSet { id, bans: self.0.iter().map(|s| s.clone()).collect() };
     entry.extend(self.0);
     result
   }
@@ -444,9 +458,9 @@ impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>>
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::access::BannedPeer<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.remove(&spadina_core::access::BannedPeer::Peer(self.0.clone()));
-    spadina_core::ClientRequest::PeerBanClear { id, bans: vec![spadina_core::access::BannedPeer::Peer(self.0)] }
+    spadina_core::net::server::ClientRequest::PeerBanClear { id, bans: vec![spadina_core::access::BannedPeer::Peer(self.0)] }
   }
 }
 impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>> for Remove<super::RemoteServer> {
@@ -455,9 +469,9 @@ impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>>
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::access::BannedPeer<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.remove(&spadina_core::access::BannedPeer::Peer(self.0 .0.clone()));
-    spadina_core::ClientRequest::PeerBanClear { id, bans: vec![spadina_core::access::BannedPeer::Peer(self.0 .0)] }
+    spadina_core::net::server::ClientRequest::PeerBanClear { id, bans: vec![spadina_core::access::BannedPeer::Peer(self.0 .0)] }
   }
 }
 impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>> for Remove<spadina_core::access::BannedPeer<String>> {
@@ -466,9 +480,9 @@ impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>>
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::access::BannedPeer<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.remove(&self.0);
-    spadina_core::ClientRequest::PeerBanClear { id, bans: vec![self.0] }
+    spadina_core::net::server::ClientRequest::PeerBanClear { id, bans: vec![self.0] }
   }
 }
 impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>> for Remove<Vec<String>> {
@@ -477,11 +491,14 @@ impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>>
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::access::BannedPeer<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     for ban in &self.0 {
       entry.remove(&spadina_core::access::BannedPeer::Peer(ban.clone()));
     }
-    spadina_core::ClientRequest::PeerBanClear { id, bans: self.0.into_iter().map(|s| spadina_core::access::BannedPeer::Peer(s)).collect() }
+    spadina_core::net::server::ClientRequest::PeerBanClear {
+      id,
+      bans: self.0.into_iter().map(|s| spadina_core::access::BannedPeer::Peer(s)).collect(),
+    }
   }
 }
 impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>> for Remove<Vec<super::RemoteServer>> {
@@ -490,11 +507,14 @@ impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>>
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::access::BannedPeer<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     for ban in &self.0 {
       entry.remove(&spadina_core::access::BannedPeer::Peer(ban.0.clone()));
     }
-    spadina_core::ClientRequest::PeerBanClear { id, bans: self.0.into_iter().map(|s| spadina_core::access::BannedPeer::Peer(s.0)).collect() }
+    spadina_core::net::server::ClientRequest::PeerBanClear {
+      id,
+      bans: self.0.into_iter().map(|s| spadina_core::access::BannedPeer::Peer(s.0)).collect(),
+    }
   }
 }
 impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>> for Remove<Vec<spadina_core::access::BannedPeer<String>>> {
@@ -503,11 +523,11 @@ impl Update<std::collections::HashSet<spadina_core::access::BannedPeer<String>>>
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::access::BannedPeer<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     for ban in &self.0 {
       entry.remove(ban);
     }
-    spadina_core::ClientRequest::PeerBanClear { id, bans: self.0 }
+    spadina_core::net::server::ClientRequest::PeerBanClear { id, bans: self.0 }
   }
 }
 impl Update<Vec<spadina_core::realm::RealmDirectoryEntry<String>>> for Add<spadina_core::realm::LocalRealmTarget<String>> {
@@ -516,7 +536,7 @@ impl Update<Vec<spadina_core::realm::RealmDirectoryEntry<String>>> for Add<spadi
     id: i32,
     entry: &mut Vec<spadina_core::realm::RealmDirectoryEntry<String>>,
     local_server: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.push(spadina_core::realm::RealmDirectoryEntry {
       asset: self.0.asset.clone(),
       owner: self.0.owner.clone(),
@@ -525,13 +545,18 @@ impl Update<Vec<spadina_core::realm::RealmDirectoryEntry<String>>> for Add<spadi
       activity: spadina_core::realm::RealmActivity::Unknown,
       train: None,
     });
-    spadina_core::ClientRequest::CalendarRealmAdd { id, realm: self.0 }
+    spadina_core::net::server::ClientRequest::CalendarLocationAdd { id, location: self.0 }
   }
 }
 impl Update<Vec<spadina_core::realm::RealmDirectoryEntry<String>>> for Clear {
-  fn into_request(self, id: i32, entry: &mut Vec<spadina_core::realm::RealmDirectoryEntry<String>>, _: &str) -> spadina_core::ClientRequest<String> {
+  fn into_request(
+    self,
+    id: i32,
+    entry: &mut Vec<spadina_core::realm::RealmDirectoryEntry<String>>,
+    _: &str,
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.clear();
-    spadina_core::ClientRequest::CalendarRealmClear { id }
+    spadina_core::net::server::ClientRequest::CalendarLocationClear { id }
   }
 }
 impl Update<Vec<spadina_core::realm::RealmDirectoryEntry<String>>> for Remove<spadina_core::realm::LocalRealmTarget<String>> {
@@ -540,54 +565,54 @@ impl Update<Vec<spadina_core::realm::RealmDirectoryEntry<String>>> for Remove<sp
     id: i32,
     entry: &mut Vec<spadina_core::realm::RealmDirectoryEntry<String>>,
     local_server: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.retain_mut(|r| r.asset != self.0.asset && r.owner != self.0.owner && &r.server != local_server);
-    spadina_core::ClientRequest::CalendarRealmRemove { id, realm: self.0 }
+    spadina_core::net::server::ClientRequest::CalendarLocationRemove { id, location: self.0 }
   }
 }
 impl Update<Vec<u8>> for () {
-  fn into_request(self, id: i32, entry: &mut Vec<u8>, _: &str) -> spadina_core::ClientRequest<String> {
+  fn into_request(self, id: i32, entry: &mut Vec<u8>, _: &str) -> spadina_core::net::server::ClientRequest<String> {
     entry.clear();
-    spadina_core::ClientRequest::CalendarReset { id, player: None }
+    spadina_core::net::server::ClientRequest::CalendarReset { id, player: None }
   }
 }
-impl Update<(Vec<spadina_core::access::AccessControl<spadina_core::access::LocationAccess>>, spadina_core::access::LocationAccess)>
-  for Add<spadina_core::access::AccessControl<spadina_core::access::LocationAccess>>
+impl Update<(Vec<spadina_core::access::AccessControl<spadina_core::access::OnlineAccess>>, spadina_core::access::OnlineAccess)>
+  for Add<spadina_core::access::AccessControl<spadina_core::access::OnlineAccess>>
 {
   fn into_request(
     self,
     id: i32,
-    entry: &mut (Vec<spadina_core::access::AccessControl<spadina_core::access::LocationAccess>>, spadina_core::access::LocationAccess),
+    entry: &mut (Vec<spadina_core::access::AccessControl<spadina_core::access::OnlineAccess>>, spadina_core::access::OnlineAccess),
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.0.insert(0, self.0);
-    spadina_core::ClientRequest::AccessLocationSet { id, rules: entry.0.clone(), default: entry.1.clone() }
+    spadina_core::net::server::ClientRequest::AccessOnlineSet { id, rules: entry.0.clone(), default: entry.1.clone() }
   }
 }
-impl Update<(Vec<spadina_core::access::AccessControl<spadina_core::access::LocationAccess>>, spadina_core::access::LocationAccess)>
-  for Set<(Vec<spadina_core::access::AccessControl<spadina_core::access::LocationAccess>>, spadina_core::access::LocationAccess)>
+impl Update<(Vec<spadina_core::access::AccessControl<spadina_core::access::OnlineAccess>>, spadina_core::access::OnlineAccess)>
+  for Set<(Vec<spadina_core::access::AccessControl<spadina_core::access::OnlineAccess>>, spadina_core::access::OnlineAccess)>
 {
   fn into_request(
     self,
     id: i32,
-    entry: &mut (Vec<spadina_core::access::AccessControl<spadina_core::access::LocationAccess>>, spadina_core::access::LocationAccess),
+    entry: &mut (Vec<spadina_core::access::AccessControl<spadina_core::access::OnlineAccess>>, spadina_core::access::OnlineAccess),
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     *entry = self.0;
-    spadina_core::ClientRequest::AccessLocationSet { id, rules: entry.0.clone(), default: entry.1.clone() }
+    spadina_core::net::server::ClientRequest::AccessOnlineSet { id, rules: entry.0.clone(), default: entry.1.clone() }
   }
 }
-impl Update<(Vec<spadina_core::access::AccessControl<spadina_core::access::LocationAccess>>, spadina_core::access::LocationAccess)>
-  for Remove<spadina_core::access::AccessControl<spadina_core::access::LocationAccess>>
+impl Update<(Vec<spadina_core::access::AccessControl<spadina_core::access::OnlineAccess>>, spadina_core::access::OnlineAccess)>
+  for Remove<spadina_core::access::AccessControl<spadina_core::access::OnlineAccess>>
 {
   fn into_request(
     self,
     id: i32,
-    entry: &mut (Vec<spadina_core::access::AccessControl<spadina_core::access::LocationAccess>>, spadina_core::access::LocationAccess),
+    entry: &mut (Vec<spadina_core::access::AccessControl<spadina_core::access::OnlineAccess>>, spadina_core::access::OnlineAccess),
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.0.retain(|r| r != &self.0);
-    spadina_core::ClientRequest::AccessLocationSet { id, rules: entry.0.clone(), default: entry.1.clone() }
+    spadina_core::net::server::ClientRequest::AccessOnlineSet { id, rules: entry.0.clone(), default: entry.1.clone() }
   }
 }
 impl
@@ -690,7 +715,7 @@ impl
 }
 impl
   KeyUpdate<
-    spadina_core::ClientRequest<String>,
+    spadina_core::net::server::ClientRequest<String>,
     (Vec<spadina_core::access::AccessControl<spadina_core::access::SimpleAccess>>, spadina_core::access::SimpleAccess),
   > for Set<(Vec<spadina_core::access::AccessControl<spadina_core::access::SimpleAccess>>, spadina_core::access::SimpleAccess)>
 {
@@ -705,18 +730,18 @@ impl
         (Vec<spadina_core::access::AccessControl<spadina_core::access::SimpleAccess>>, spadina_core::access::SimpleAccess),
       ),
     >,
-  ) -> Option<spadina_core::ClientRequest<String>> {
+  ) -> Option<spadina_core::net::server::ClientRequest<String>> {
     let (new_acls, new_default) = self.0;
     let (time, (acls, default)) = entry.or_default();
     *time = chrono::Utc::now();
     *acls = new_acls;
     *default = new_default;
-    Some(spadina_core::ClientRequest::AccessSet { id, target: key, rules: acls.clone(), default: *default })
+    Some(spadina_core::net::server::ClientRequest::AccessSet { id, target: key, rules: acls.clone(), default: *default })
   }
 }
 impl
   KeyUpdate<
-    spadina_core::ClientRequest<String>,
+    spadina_core::net::server::ClientRequest<String>,
     (Vec<spadina_core::access::AccessControl<spadina_core::access::SimpleAccess>>, spadina_core::access::SimpleAccess),
   > for Add<spadina_core::access::AccessControl<spadina_core::access::SimpleAccess>>
 {
@@ -731,14 +756,14 @@ impl
         (Vec<spadina_core::access::AccessControl<spadina_core::access::SimpleAccess>>, spadina_core::access::SimpleAccess),
       ),
     >,
-  ) -> Option<spadina_core::ClientRequest<String>> {
+  ) -> Option<spadina_core::net::server::ClientRequest<String>> {
     // If we haven't fetched the ACLs, we don't want to destructively overwrite them
     match entry {
       std::collections::hash_map::Entry::Occupied(mut o) => {
         let (time, (acls, default)) = o.get_mut();
         acls.insert(0, self.0.clone());
         *time = chrono::Utc::now();
-        Some(spadina_core::ClientRequest::AccessSet { id, target: key, rules: acls.clone(), default: *default })
+        Some(spadina_core::net::server::ClientRequest::AccessSet { id, target: key, rules: acls.clone(), default: *default })
       }
       std::collections::hash_map::Entry::Vacant(_) => None,
     }
@@ -746,7 +771,7 @@ impl
 }
 impl
   KeyUpdate<
-    spadina_core::ClientRequest<String>,
+    spadina_core::net::server::ClientRequest<String>,
     (Vec<spadina_core::access::AccessControl<spadina_core::access::SimpleAccess>>, spadina_core::access::SimpleAccess),
   > for Remove<spadina_core::access::AccessControl<spadina_core::access::SimpleAccess>>
 {
@@ -761,7 +786,7 @@ impl
         (Vec<spadina_core::access::AccessControl<spadina_core::access::SimpleAccess>>, spadina_core::access::SimpleAccess),
       ),
     >,
-  ) -> Option<spadina_core::ClientRequest<String>> {
+  ) -> Option<spadina_core::net::server::ClientRequest<String>> {
     // If we haven't fetched the ACLs, we don't want to destructively overwrite them
     match entry {
       std::collections::hash_map::Entry::Occupied(mut o) => {
@@ -772,7 +797,7 @@ impl
           None
         } else {
           *time = chrono::Utc::now();
-          Some(spadina_core::ClientRequest::AccessSet { id, target: key, rules: acls.clone(), default: *default })
+          Some(spadina_core::net::server::ClientRequest::AccessSet { id, target: key, rules: acls.clone(), default: *default })
         }
       }
       std::collections::hash_map::Entry::Vacant(_) => None,
@@ -781,7 +806,7 @@ impl
 }
 impl
   KeyUpdate<
-    spadina_core::ClientRequest<String>,
+    spadina_core::net::server::ClientRequest<String>,
     (Vec<spadina_core::access::AccessControl<spadina_core::access::SimpleAccess>>, spadina_core::access::SimpleAccess),
   > for Set<spadina_core::access::SimpleAccess>
 {
@@ -796,7 +821,7 @@ impl
         (Vec<spadina_core::access::AccessControl<spadina_core::access::SimpleAccess>>, spadina_core::access::SimpleAccess),
       ),
     >,
-  ) -> Option<spadina_core::ClientRequest<String>> {
+  ) -> Option<spadina_core::net::server::ClientRequest<String>> {
     // If we haven't fetched the ACLs, we don't want to destructively overwrite them
     match entry {
       std::collections::hash_map::Entry::Occupied(mut o) => {
@@ -805,7 +830,7 @@ impl
           None
         } else {
           *time = chrono::Utc::now();
-          Some(spadina_core::ClientRequest::AccessSet { id, target: key, rules: acls.clone(), default: *default })
+          Some(spadina_core::net::server::ClientRequest::AccessSet { id, target: key, rules: acls.clone(), default: *default })
         }
       }
       std::collections::hash_map::Entry::Vacant(_) => None,
@@ -838,19 +863,19 @@ impl
     Some(spadina_core::realm::RealmRequest::AccessSet { id, target: key, rules: acls.clone(), default: *default })
   }
 }
-impl KeyUpdate<spadina_core::ClientRequest<String>, spadina_core::access::AccountLockState> for bool {
+impl KeyUpdate<spadina_core::net::server::ClientRequest<String>, spadina_core::access::AccountLockState> for bool {
   fn into_operation(
     self,
-    name: <spadina_core::access::AccountLockState as KeyCacheable<spadina_core::ClientRequest<String>>>::Key,
+    name: <spadina_core::access::AccountLockState as KeyCacheable<spadina_core::net::server::ClientRequest<String>>>::Key,
     id: i32,
     entry: std::collections::hash_map::Entry<
-      <spadina_core::access::AccountLockState as KeyCacheable<spadina_core::ClientRequest<String>>>::Key,
+      <spadina_core::access::AccountLockState as KeyCacheable<spadina_core::net::server::ClientRequest<String>>>::Key,
       (chrono::DateTime<chrono::Utc>, spadina_core::access::AccountLockState),
     >,
-  ) -> Option<spadina_core::ClientRequest<String>> {
+  ) -> Option<spadina_core::net::server::ClientRequest<String>> {
     *entry.or_default() =
       (chrono::Utc::now(), if self { spadina_core::access::AccountLockState::Locked } else { spadina_core::access::AccountLockState::Unlocked });
-    Some(spadina_core::ClientRequest::AccountLockChange { id, name, locked: self })
+    Some(spadina_core::net::server::ClientRequest::AccountLockChange { id, name, locked: self })
   }
 }
 impl Update<std::collections::HashSet<spadina_core::communication::Bookmark<String>>> for Add<spadina_core::communication::Bookmark<String>> {
@@ -859,9 +884,9 @@ impl Update<std::collections::HashSet<spadina_core::communication::Bookmark<Stri
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::communication::Bookmark<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.insert(self.0.clone());
-    spadina_core::ClientRequest::BookmarkAdd { id, bookmark: self.0 }
+    spadina_core::net::server::ClientRequest::BookmarkAdd { id, bookmark: self.0 }
   }
 }
 impl Update<std::collections::HashSet<spadina_core::communication::Bookmark<String>>> for Remove<spadina_core::communication::Bookmark<String>> {
@@ -870,12 +895,12 @@ impl Update<std::collections::HashSet<spadina_core::communication::Bookmark<Stri
     id: i32,
     entry: &mut std::collections::HashSet<spadina_core::communication::Bookmark<String>>,
     _: &str,
-  ) -> spadina_core::ClientRequest<String> {
+  ) -> spadina_core::net::server::ClientRequest<String> {
     entry.remove(&self.0);
-    spadina_core::ClientRequest::BookmarkRemove { id, bookmark: self.0 }
+    spadina_core::net::server::ClientRequest::BookmarkRemove { id, bookmark: self.0 }
   }
 }
-impl KeyUpdate<spadina_core::ClientRequest<String>, Vec<super::DirectMessage>> for String {
+impl KeyUpdate<spadina_core::net::server::ClientRequest<String>, Vec<super::DirectMessage>> for String {
   fn into_operation(
     self,
     key: spadina_core::player::PlayerIdentifier<String>,
@@ -884,13 +909,17 @@ impl KeyUpdate<spadina_core::ClientRequest<String>, Vec<super::DirectMessage>> f
       spadina_core::player::PlayerIdentifier<String>,
       (chrono::DateTime<chrono::Utc>, Vec<super::DirectMessage>),
     >,
-  ) -> Option<spadina_core::ClientRequest<String>> {
+  ) -> Option<spadina_core::net::server::ClientRequest<String>> {
     let (_, messages) = entry.or_default();
     messages.push(super::DirectMessage::Pending(id, spadina_core::communication::MessageBody::Text(self.clone())));
-    Some(spadina_core::ClientRequest::DirectMessageSend { id, recipient: key, body: spadina_core::communication::MessageBody::Text(self) })
+    Some(spadina_core::net::server::ClientRequest::DirectMessageSend {
+      id,
+      recipient: key,
+      body: spadina_core::communication::MessageBody::Text(self),
+    })
   }
 }
-impl KeyUpdate<spadina_core::ClientRequest<String>, Vec<super::DirectMessage>> for spadina_core::communication::MessageBody<String> {
+impl KeyUpdate<spadina_core::net::server::ClientRequest<String>, Vec<super::DirectMessage>> for spadina_core::communication::MessageBody<String> {
   fn into_operation(
     self,
     key: spadina_core::player::PlayerIdentifier<String>,
@@ -899,10 +928,10 @@ impl KeyUpdate<spadina_core::ClientRequest<String>, Vec<super::DirectMessage>> f
       spadina_core::player::PlayerIdentifier<String>,
       (chrono::DateTime<chrono::Utc>, Vec<super::DirectMessage>),
     >,
-  ) -> Option<spadina_core::ClientRequest<String>> {
+  ) -> Option<spadina_core::net::server::ClientRequest<String>> {
     let (_, messages) = entry.or_default();
     messages.push(super::DirectMessage::Pending(id, self.clone()));
-    Some(spadina_core::ClientRequest::DirectMessageSend { id, recipient: key, body: self })
+    Some(spadina_core::net::server::ClientRequest::DirectMessageSend { id, recipient: key, body: self })
   }
 }
 pub struct ToJsonFile<P: AsRef<std::path::Path>>(pub P);

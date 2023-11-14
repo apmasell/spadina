@@ -1,17 +1,16 @@
 use futures::SinkExt;
-use spadina_core::net::ToWebMessage;
 pub type AuthKey = std::sync::Arc<(String, openssl::pkey::PKey<openssl::pkey::Private>, Vec<u8>)>;
 #[pin_project::pin_project(project = ConnectionStateProjection)]
 pub enum ConnectionState {
   Idle,
-  Active(#[pin] tokio_tungstenite::WebSocketStream<spadina_core::net::IncomingConnection>),
+  Active(#[pin] tokio_tungstenite::WebSocketStream<spadina_core::net::mixed_connection::MixedConnection>),
 }
 #[derive(Debug)]
 pub enum ServerRequest {
   TryLogin { insecure: bool, player: String, server: String, key: Option<AuthKey> },
   LoginPassword { insecure: bool, player: String, password: String, server: String },
   LoginSocket { path: std::path::PathBuf, player: String, is_superuser: bool },
-  Deliver(spadina_core::ClientRequest<String>),
+  Deliver(spadina_core::net::server::ClientRequest<String>),
 }
 #[derive(Clone, Debug)]
 pub enum Auth {
@@ -24,7 +23,7 @@ async fn open_websocket(insecure: bool, authority: &http::uri::Authority, token:
   eprintln!("Got authorization token: {}", &token);
   match hyper::Uri::builder()
     .scheme(if insecure { http::uri::Scheme::HTTP } else { http::uri::Scheme::HTTPS })
-    .path_and_query(spadina_core::net::CLIENT_V1_PATH)
+    .path_and_query(spadina_core::net::server::CLIENT_V1_PATH)
     .authority(authority.clone())
     .build()
   {
@@ -54,7 +53,7 @@ async fn open_websocket(insecure: bool, authority: &http::uri::Authority, token:
             match hyper::upgrade::on(response).await {
               Ok(upgraded) => Ok(ConnectionState::Active(
                 tokio_tungstenite::WebSocketStream::from_raw_socket(
-                  spadina_core::net::IncomingConnection::Upgraded(upgraded),
+                  spadina_core::net::mixed_connection::MixedConnection::Upgraded(upgraded),
                   tokio_tungstenite::tungstenite::protocol::Role::Client,
                   None,
                 )
@@ -89,7 +88,7 @@ async fn open_named_websocket(socket: std::path::PathBuf, player: String, is_sup
         .header(http::header::UPGRADE, "websocket")
         .body(())
         .unwrap(),
-      spadina_core::net::IncomingConnection::Unix(socket),
+      spadina_core::net::mixed_connection::MixedConnection::Unix(socket),
     )
     .await
     {
@@ -105,7 +104,7 @@ async fn make_kerberos_request(server: &str, insecure: bool, username: &str) -> 
     Ok(authority) => {
       let server_principal = match hyper::Uri::builder()
         .scheme(if insecure { http::uri::Scheme::HTTP } else { http::uri::Scheme::HTTPS })
-        .path_and_query(spadina_core::net::KERBEROS_PRINCIPAL_PATH)
+        .path_and_query(spadina_core::net::server::KERBEROS_PRINCIPAL_PATH)
         .authority(authority.clone())
         .build()
       {
@@ -145,7 +144,7 @@ async fn make_kerberos_request(server: &str, insecure: bool, username: &str) -> 
 
       let token: String = match hyper::Uri::builder()
         .scheme(if insecure { http::uri::Scheme::HTTP } else { http::uri::Scheme::HTTPS })
-        .path_and_query(spadina_core::net::KERBEROS_AUTH_PATH)
+        .path_and_query(spadina_core::net::server::KERBEROS_AUTH_PATH)
         .authority(authority.clone())
         .build()
       {
@@ -189,7 +188,7 @@ async fn make_kerberos_request(server: &str, insecure: bool, username: &str) -> 
 async fn make_openid_request(server: &str, insecure: bool, username: &str) -> Result<ConnectionState, String> {
   match server.parse::<http::uri::Authority>() {
     Ok(authority) => {
-      let response: spadina_core::auth::OpenIdConnectInformation = match hyper::Uri::builder()
+      let response: spadina_core::net::server::auth::OpenIdConnectInformation<String> = match hyper::Uri::builder()
         .scheme(if insecure { http::uri::Scheme::HTTP } else { http::uri::Scheme::HTTPS })
         .path_and_query(format!(
           "{}?{}",
@@ -273,12 +272,12 @@ impl ConnectionState {
   ) -> Result<bool, std::borrow::Cow<'static, str>> {
     Ok(match request {
       ServerRequest::TryLogin { insecure, server, player, key } => {
-        async fn make_request(server: &str, insecure: bool) -> Result<spadina_core::auth::AuthScheme, String> {
+        async fn make_request(server: &str, insecure: bool) -> Result<spadina_core::net::server::auth::AuthScheme, String> {
           match server.parse::<http::uri::Authority>() {
             Ok(authority) => {
               match hyper::Uri::builder()
                 .scheme(if insecure { http::uri::Scheme::HTTP } else { http::uri::Scheme::HTTPS })
-                .path_and_query(spadina_core::net::AUTH_METHOD_PATH)
+                .path_and_query(spadina_core::net::server::AUTH_METHOD_PATH)
                 .authority(authority.clone())
                 .build()
               {
@@ -319,7 +318,7 @@ impl ConnectionState {
             Ok(authority) => {
               match hyper::Uri::builder()
                 .scheme(if insecure { http::uri::Scheme::HTTP } else { http::uri::Scheme::HTTPS })
-                .path_and_query(spadina_core::net::CLIENT_NONCE_PATH)
+                .path_and_query(spadina_core::net::server::CLIENT_NONCE_PATH)
                 .authority(authority.clone())
                 .build()
               {
@@ -341,7 +340,7 @@ impl ConnectionState {
                           .request(
                             hyper::Request::post(uri)
                               .body(
-                                serde_json::to_vec(&spadina_core::auth::AuthPublicKey {
+                                serde_json::to_vec(&spadina_core::net::server::auth::AuthPublicKey {
                                   name: key.0.as_str(),
                                   nonce: std::str::from_utf8(nonce.chunk()).ok()?,
                                   signature: signer.sign_to_vec().ok()?,
@@ -399,7 +398,7 @@ impl ConnectionState {
             Ok(socket) => {
               *self = ConnectionState::Active(
                 tokio_tungstenite::WebSocketStream::from_raw_socket(
-                  spadina_core::net::IncomingConnection::Unix(socket),
+                  spadina_core::net::mixed_connection::MixedConnection::Unix(socket),
                   tokio_tungstenite::tungstenite::protocol::Role::Client,
                   None,
                 )
@@ -425,15 +424,15 @@ impl ConnectionState {
             false
           } else {
             match scheme {
-              spadina_core::auth::AuthScheme::Kerberos => {
+              spadina_core::net::server::auth::AuthScheme::Kerberos => {
                 *self = make_kerberos_request(&server, insecure, &player).await?;
                 false
               }
-              spadina_core::auth::AuthScheme::OpenIdConnect => {
+              spadina_core::net::server::auth::AuthScheme::OpenIdConnect => {
                 *self = make_openid_request(&server, insecure, &player).await?;
                 false
               }
-              spadina_core::auth::AuthScheme::Password => true,
+              spadina_core::net::server::auth::AuthScheme::Password => true,
             }
           }
         }
@@ -445,7 +444,7 @@ impl ConnectionState {
             Ok(authority) => {
               let token: String = match hyper::Uri::builder()
                 .scheme(if insecure { http::uri::Scheme::HTTP } else { http::uri::Scheme::HTTPS })
-                .path_and_query(spadina_core::net::PASSWORD_AUTH_PATH)
+                .path_and_query(spadina_core::net::server::PASSWORD_AUTH_PATH)
                 .authority(authority.clone())
                 .build()
               {
@@ -457,7 +456,7 @@ impl ConnectionState {
                     .request(
                       hyper::Request::post(uri)
                         .body(hyper::Body::from(
-                          serde_json::to_vec(&spadina_core::auth::PasswordRequest { username, password }).map_err(|e| e.to_string())?,
+                          serde_json::to_vec(&spadina_core::net::server::auth::PasswordRequest { username, password }).map_err(|e| e.to_string())?,
                         ))
                         .unwrap(),
                     )
@@ -507,7 +506,7 @@ impl ConnectionState {
       }
     })
   }
-  pub(crate) async fn deliver(&mut self, request: spadina_core::ClientRequest<String>) {
+  pub(crate) async fn deliver(&mut self, request: spadina_core::net::server::ClientRequest<String>) {
     if let ConnectionState::Active(connection) = self {
       if let Err(e) = connection.send(request.as_wsm()).await {
         eprintln!("Error sending request to server: {}", e);
@@ -516,7 +515,7 @@ impl ConnectionState {
   }
 }
 impl futures::Stream for ConnectionState {
-  type Item = spadina_core::ClientResponse<String>;
+  type Item = spadina_core::net::server::ClientResponse<String>;
   fn poll_next(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
     match self.project() {
       ConnectionStateProjection::Idle => std::task::Poll::Pending,
@@ -537,7 +536,7 @@ impl futures::Stream for ConnectionState {
             std::task::Poll::Ready(None)
           }
         },
-        std::task::Poll::Ready(Some(Ok(_))) => std::task::Poll::Ready(Some(spadina_core::ClientResponse::NoOperation)),
+        std::task::Poll::Ready(Some(Ok(_))) => std::task::Poll::Ready(Some(spadina_core::net::server::ClientResponse::NoOperation)),
         std::task::Poll::Ready(Some(Err(e))) => {
           eprintln!("Error in connection: {}", e);
           std::task::Poll::Ready(None)

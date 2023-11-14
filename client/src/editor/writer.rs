@@ -1,6 +1,6 @@
 pub trait AssetWriter {
   type RequestId: Copy;
-  fn check(&mut self, id: Self::RequestId) -> Option<Result<String, spadina_core::AssetError>>;
+  fn check(&mut self, id: Self::RequestId) -> Option<Result<String, spadina_core::net::server::AssetError>>;
   fn write(&mut self, asset: crate::state::mutator::AssetUploadRequest) -> Self::RequestId;
 }
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -8,10 +8,10 @@ pub struct LocalRequest(i32);
 pub struct LocalWriter {
   id: i32,
   output: tokio::sync::mpsc::UnboundedSender<(i32, crate::state::mutator::AssetUploadRequest)>,
-  assets: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<LocalRequest, Result<String, spadina_core::AssetError>>>>,
+  assets: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<LocalRequest, Result<String, spadina_core::net::server::AssetError>>>>,
 }
 impl LocalWriter {
-  pub fn new<S: spadina_core::asset_store::AsyncAssetStore + 'static>(
+  pub fn new<S: spadina_core::asset_store::AssetStore + 'static>(
     author: spadina_core::player::PlayerIdentifier<impl AsRef<str>>,
     asset_store: S,
     runtime: &tokio::runtime::Runtime,
@@ -48,7 +48,7 @@ impl LocalWriter {
             )
             .await
           }
-          _ => Err(spadina_core::AssetError::UnknownKind),
+          _ => Err(spadina_core::net::server::AssetError::UnknownKind),
         };
         match result {
           Ok(details) => {
@@ -80,7 +80,7 @@ impl LocalWriter {
 impl AssetWriter for LocalWriter {
   type RequestId = LocalRequest;
 
-  fn check(&mut self, id: Self::RequestId) -> Option<Result<String, spadina_core::AssetError>> {
+  fn check(&mut self, id: Self::RequestId) -> Option<Result<String, spadina_core::net::server::AssetError>> {
     self.assets.lock().unwrap().remove(&id)
   }
 
@@ -95,7 +95,7 @@ impl AssetWriter for LocalWriter {
 impl<S: crate::state::location::LocationState> AssetWriter for crate::state::ServerConnection<S> {
   type RequestId = crate::state::mutator::AssetUpload;
 
-  fn check(&mut self, id: Self::RequestId) -> Option<Result<String, spadina_core::AssetError>> {
+  fn check(&mut self, id: Self::RequestId) -> Option<Result<String, spadina_core::net::server::AssetError>> {
     self.assets_upload().try_remove(id)
   }
 

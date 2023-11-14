@@ -4,7 +4,7 @@ pub(crate) enum Location<S> {
   NoWhere,
   LoadingRealm {
     cache: spadina_core::asset_store::CachingResourceMapper<String>,
-    messages: super::Shared<Vec<spadina_core::location::LocationMessage<String>>>,
+    messages: super::Shared<Vec<spadina_core::space::ChatMessage<String>>>,
     name: super::Shared<(String, bool)>,
     owner: String,
     players: std::collections::HashMap<spadina_core::player::PlayerIdentifier<String>, spadina_core::avatar::Avatar>,
@@ -23,7 +23,7 @@ pub(crate) enum Location<S> {
     announcements: super::Shared<(Option<chrono::DateTime<chrono::Utc>>, Vec<spadina_core::realm::RealmAnnouncement<String>>)>,
     asset: String,
     jitter: std::sync::Arc<super::jitter::Jitter<30>>,
-    messages: super::Shared<Vec<spadina_core::location::LocationMessage<String>>>,
+    messages: super::Shared<Vec<spadina_core::space::ChatMessage<String>>>,
     name: super::Shared<(String, bool)>,
     owner: String,
     paths: super::Shared<Paths>,
@@ -43,7 +43,7 @@ pub(crate) enum LocationEvent<S> {
 pub trait LocationState: std::marker::Unpin + Send + Sync + 'static {
   fn new_host(host: spadina_core::player::PlayerIdentifier<String>) -> Self;
   fn new_realm(host: spadina_core::player::PlayerIdentifier<String>) -> Self;
-  fn handle_host(&mut self, response: spadina_core::self_hosted::GuestResponse<String>);
+  fn handle_host(&mut self, response: spadina_core::net::server::hosting::GuestResponse<String>);
   fn update_realm_states(
     &mut self,
     time: chrono::DateTime<chrono::Utc>,
@@ -107,11 +107,11 @@ impl<S> Location<S> {
   pub fn handle_realm(&mut self, response: spadina_core::realm::RealmResponse<String>) {
     todo!();
   }
-  pub fn handle_host(&mut self, response: spadina_core::self_hosted::GuestResponse<String>) {
+  pub fn handle_host(&mut self, response: spadina_core::net::server::hosting::GuestResponse<String>) {
     todo!();
   }
 
-  pub(crate) fn handle_host_event(&mut self, event: spadina_core::self_hosted::HostEvent<String>) {
+  pub(crate) fn handle_host_event(&mut self, event: spadina_core::net::server::hosting::HostEvent<String>) {
     todo!()
   }
 
@@ -171,7 +171,7 @@ impl<S> Location<S> {
 
   pub(crate) fn messages(
     &self,
-    messages: Vec<spadina_core::location::LocationMessage<String>>,
+    messages: Vec<spadina_core::space::ChatMessage<String>>,
     from: chrono::DateTime<chrono::Utc>,
     to: chrono::DateTime<chrono::Utc>,
   ) {

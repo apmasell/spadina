@@ -29,7 +29,8 @@ fn main() {
   }
   args.insert(0, format!("subcommand {:?}", subcommand));
 
-  let asset_store = spadina_core::asset_store::FileSystemStore::new(std::path::Path::new(&directory), [4, 4, 8].iter().cloned());
+  let asset_store =
+    spadina_core::asset_store::file_system_asset_store::FileSystemAssetStore::new(std::path::Path::new(&directory), [4, 4, 8].iter().cloned());
 
   match subcommand {
     Command::Install => {

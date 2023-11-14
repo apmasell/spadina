@@ -10,29 +10,22 @@ BEGIN
 END;
 $$;
 
-CREATE TABLE BannedPeers (
-    ban jsonb UNIQUE NOT NULL,
-    PRIMARY KEY (ban)
-);
-
 CREATE TABLE Announcement (
     id serial PRIMARY KEY NOT NULL,
     title text NOT NULL,
     body text NOT NULL,
     "when" jsonb NOT NULL,
-    realm jsonb NOT NULL,
+    location jsonb NOT NULL,
     "public" boolean NOT NULL
 );
 
 CREATE TABLE Player (
     id serial PRIMARY KEY NOT NULL,
     name text NOT NULL,
-    debuted boolean NOT NULL,
     avatar jsonb NOT NULL,
     message_acl jsonb NOT NULL,
     online_acl jsonb NOT NULL,
-    new_realm_access_acl jsonb NOT NULL,
-    new_realm_admin_acl jsonb NOT NULL,
+    default_location_acl jsonb NOT NULL,
     reset boolean NOT NULL DEFAULT FALSE,
     calendar_id bytea NOT NULL DEFAULT gen_calendar_id(),
     last_login timestamp WITH time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -86,79 +79,59 @@ CREATE TABLE RemotePlayerLastRead (
     CONSTRAINT remote_playerlastread_player_id FOREIGN KEY (player) REFERENCES Player (id)
 );
 
-CREATE TABLE Realm (
+CREATE TABLE Location (
     id serial PRIMARY KEY NOT NULL,
-    train int4,
     name text NOT NULL,
     owner int4 NOT NULL,
-    asset text NOT NULL,
-    state jsonb,
-    settings jsonb NOT NULL,
-    access_acl jsonb NOT NULL,
-    admin_acl jsonb NOT NULL,
-    in_directory boolean NOT NULL,
-    seed int4 NOT NULL,
-    solved boolean NOT NULL DEFAULT false,
+    descriptor jsonb NOT NULL,
+    state jsonb NOT NULL,
+    acl jsonb NOT NULL,
+    visibility smallint NOT NULL,
+    visibility_changed timestamp WITH time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created timestamp WITH time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp WITH time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT realm_player_id FOREIGN KEY (owner) REFERENCES Player (id),
-    CONSTRAINT realm_only_per_player UNIQUE (owner, asset)
+    CONSTRAINT location_player_id FOREIGN KEY (owner) REFERENCES Player (id),
+    CONSTRAINT location_only_per_player UNIQUE (owner, descriptor)
 );
 
-CREATE INDEX realm_asset ON realm(asset);
-CREATE INDEX realm_in_directory ON realm(in_directory);
-CREATE INDEX realm_owner_train ON realm(owner, train);
+CREATE INDEX location_descriptor ON location(descriptor);
+CREATE INDEX location_visibility ON location(visibility);
 
-SELECT diesel_manage_updated_at('Realm');
+SELECT diesel_manage_updated_at('Location');
 
-CREATE TABLE RealmChat (
-    realm int4 NOT NULL,
+CREATE TABLE LocationChat (
+    location int4 NOT NULL,
     principal jsonb NOT NULL,
     created timestamp WITH time zone NOT NULL,
     body jsonb NOT NULL,
-    PRIMARY KEY (principal, created, realm),
-    CONSTRAINT realmchat_realm_id FOREIGN KEY (realm) REFERENCES Realm (id)
+    PRIMARY KEY (principal, created, location),
+    CONSTRAINT locationchat_location_id FOREIGN KEY (location) REFERENCES Location (id)
 );
 
-CREATE INDEX realmchat_by_timestamp ON realmchat (realm, created);
+CREATE INDEX locationchat_by_timestamp ON locationchat (location, created);
 
-CREATE TABLE RealmAnnouncement (
+CREATE TABLE LocationAnnouncement (
     id serial PRIMARY KEY NOT NULL,
-    realm int4 NOT NULL,
+    location int4 NOT NULL,
     title text NOT NULL,
     body text NOT NULL,
     "when" jsonb NOT NULL,
     "public" boolean NOT NULL,
-    CONSTRAINT realmannouncement_realm_id FOREIGN KEY (realm) REFERENCES Realm (id)
+    CONSTRAINT locationannouncement_location_id FOREIGN KEY (location) REFERENCES Location (id)
 );
 
-CREATE TABLE RealmCalendarSubscription (
-    realm int4 NOT NULL,
+CREATE TABLE LocationCalendarSubscription (
+    location int4 NOT NULL,
     player int4 NOT NULL,
-    PRIMARY KEY (realm, player),
-    CONSTRAINT realm_calendar_subscription_player_id FOREIGN KEY (player) REFERENCES Player (id),
-    CONSTRAINT realm_calendar_subscription_realm_id FOREIGN KEY (realm) REFERENCES Realm (id)
+    PRIMARY KEY (location, player),
+    CONSTRAINT location_calendar_subscription_player_id FOREIGN KEY (player) REFERENCES Player (id),
+    CONSTRAINT location_calendar_subscription_location_id FOREIGN KEY (location) REFERENCES Location (id)
 );
 
-CREATE TABLE ServerACL (
+CREATE TABLE ServerSetting (
     category varchar(1) NOT NULL,
-    acl jsonb NOT NULL,
+    data jsonb NOT NULL,
     PRIMARY KEY (category)
-);
-
-CREATE TABLE AuthOIDC (
-    name text NOT NULL,
-    subject text NOT NULL,
-    locked boolean NOT NULL DEFAULT false,
-    issuer text,
-    PRIMARY KEY (name)
-);
-
-CREATE TABLE AuthOTP (
-    name text NOT NULL,
-    code text NOT NULL,
-    locked boolean NOT NULL DEFAULT false,
-    PRIMARY KEY (name, code)
 );
 
 CREATE TABLE Bookmark (
@@ -178,8 +151,7 @@ CREATE TABLE PublicKey (
     CONSTRAINT host_player_id FOREIGN KEY (player) REFERENCES Player (id)
 );
 
-CREATE TABLE RealmTrain (
-   asset text NOT NULL,
-   allowed_first boolean NOT NULL,
-   PRIMARY KEY (asset)
-);
+CREATE VIEW PlayerSize AS
+  SELECT SUM(pg_column_size(Location.*)) AS total, Player.name AS player
+  FROM Player JOIN Location ON Player.id = Location.owner
+  GROUP BY Player.name;

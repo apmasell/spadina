@@ -1,5 +1,5 @@
 # Background for Server Administrators
-Running a Spadina server allows you to create a control a community.
+Running a Spadina server allows you to create and shepard a community.
 It is part technical and part social. You will be responsible for how players
 on your server conduct themselves when visiting other servers and other
 administrators can choose to cut _all_ your players off from the network.
@@ -103,7 +103,6 @@ needs:
   "bind_address": null,
   "certificate": null,
   "database_url": "postgres://spadina:DB_PASS@localhost/spadina",
-  "default_realm": ...,
   "name": ...,
   "unix_socket": "/var/run/spadina.socket"
 }
@@ -163,15 +162,6 @@ If using S3 or an S3-compatible service (_e.g._ Minio), create a bucket and use:
 The server will need assets to initially start the game. You must pick an asset
 pack and load it into your asset store. The asset pack will also include a
 command to create a home realm.
-
-TODO: Download asset pack from XXX. If using S3 or Google Cloud, upload all the asset files into the bucket. For local installation, run:
-
-```
-spadina-cli install-assets asset-pack.zip /path/to/assets
-```
-
-You will also need to install at least one realm asset to use as the home
-realm. Set `"default_realm"` to the correct asset ID for you asset pack.
 
 Your players will need to log in and the `"authentication"` setting controls
 how that happens. There are two authentication mechanisms:
@@ -265,20 +255,3 @@ provider), you can forward the socket using SSH:
 ```
 ssh -R /srv/spadina/.spadina.socket:/home/andre/.spadina.socket spadina@example.com
 ```
-
-## Starting the Journey
-When a new player joins your server, they will only be allowed to access their
-home realm. Their home realm must have a trigger to _debut_ the player deciding
-that they are ready to interact with the outside world. As the administrator,
-you can list possible realms for your players. This is part of the
-configuration of the server and the realm must be a train-car realm.
-
-## Train-Car Realms
-The server administrator can add realm descriptions to use as train cars. The
-server will choose realms the player has not played as train cars. Not all
-realms can be used as train cars (they must have a link to the next car). Once
-added, train cars cannot be deleted. When adding a realm, the administrator can
-choose if this realm is an appropriate first realm for a player. If multiple
-realms are available as first realms, the system will choose one randomly. A
-realm that is marked as appropriate for a first realm can also be used for
-non-first train cars.

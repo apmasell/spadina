@@ -1,11 +1,13 @@
+use crate::accounts::configuration::AccountsConfiguration;
+use crate::asset_store::AssetStoreConfiguration;
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub(crate) struct ServerConfiguration {
-  pub asset_store: crate::asset_store::AssetStoreConfiguration,
-  pub authentication: crate::auth::AuthConfiguration,
+  pub asset_store: AssetStoreConfiguration,
+  pub authentication: AccountsConfiguration,
   pub bind_address: Option<String>,
   pub certificate: Option<std::path::PathBuf>,
   pub database_url: String,
-  pub default_realm: Option<String>,
   pub name: String,
   pub unix_socket: Option<String>,
 }

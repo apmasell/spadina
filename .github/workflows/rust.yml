@@ -12,7 +12,7 @@ jobs:
     - name: Update Apt
       run: sudo apt-get update
     - name: Install Dependencies
-      run: sudo apt-get install gcc pkg-config openssl libasound2-dev cmake build-essential python3 libfreetype6-dev libexpat1-dev libxcb-composite0-dev libssl-dev libx11-dev libpq-dev libudev-dev libmysqlclient-dev libkrb5-dev
+      run: sudo apt-get install gcc pkg-config openssl libasound2-dev cmake build-essential python3 libfreetype6-dev libexpat1-dev libxcb-composite0-dev libssl-dev libx11-dev libpq-dev libudev-dev libmysqlclient-dev
     - name: Install Rust
       uses: actions-rs/toolchain@v1
       with:

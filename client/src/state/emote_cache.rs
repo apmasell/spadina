@@ -13,7 +13,7 @@ impl EmoteCache {
   pub fn new() -> Self {
     Self(lru::LruCache::new(std::num::NonZeroUsize::try_from(100).unwrap()))
   }
-  pub async fn get(&mut self, id: &str, asset_store: impl spadina_core::asset_store::AsyncAssetStore) -> EmoteResult {
+  pub async fn get(&mut self, id: &str, asset_store: impl spadina_core::asset_store::AssetStore) -> EmoteResult {
     if let Some(result) = self.0.get(id) {
       match result {
         Ok(value) => EmoteResult::Emote(value.clone()),

@@ -1,19 +1,17 @@
+use crate::database::location_persistance;
+use rand::random;
 use spadina_core::asset_store::AsyncAssetStore;
-
-use crate::realm::puzzle::PlayerKey;
 
 pub mod convert;
 pub mod navigation;
 pub mod output;
-pub mod persistence;
-pub mod puzzle;
 
 struct ActivePlayer {
   committed_movements: Vec<spadina_core::realm::CharacterMotion<spadina_core::realm::Point, std::sync::Arc<str>>>,
   action_gate: ActionGate,
   current_direction: spadina_core::realm::Direction,
   current_position: spadina_core::realm::Point,
-  principal: crate::destination::SharedPlayerId,
+  principal: crate::destination::SharedPlayerIdentifier,
   remaining_actions: std::collections::VecDeque<spadina_core::realm::Action<std::sync::Arc<str>>>,
   state: Option<u8>,
 }
@@ -29,10 +27,10 @@ enum ActionGate {
 /// Information about an active realm
 #[pin_project::pin_project(project = RealmProjection)]
 pub(crate) struct Realm {
-  access_acl: crate::database::persisted::PersistedLocal<persistence::RealmAccess>,
+  access_acl: crate::database::persisted::PersistedLocal<location_persistance::LocationAccess>,
   active_players: std::collections::HashMap<PlayerKey, ActivePlayer>,
-  admin_acl: crate::database::persisted::PersistedLocal<persistence::RealmAdmin>,
-  announcements: crate::database::persisted::PersistedLocal<persistence::RealmAnnouncements>,
+  admin_acl: crate::database::persisted::PersistedLocal<location_persistance::RealmAdmin>,
+  announcements: crate::database::persisted::PersistedLocal<location_persistance::RealmAnnouncements>,
   asset: std::sync::Arc<str>,
   capabilities: std::collections::BTreeSet<&'static str>,
   current_states: std::collections::HashMap<spadina_core::realm::PropertyKey<crate::shstr::ShStr>, output::Multi<spadina_core::realm::PropertyValue>>,
@@ -41,15 +39,15 @@ pub(crate) struct Realm {
   #[pin]
   next_update: std::pin::Pin<Box<tokio::time::Sleep>>,
   manifold: crate::realm::navigation::RealmManifold,
-  name_and_in_directory: crate::database::persisted::PersistedLocal<persistence::NameAndInDirectory>,
+  name_and_in_directory: crate::database::persisted::PersistedLocal<location_persistance::NameAndInDirectory>,
   owner: std::sync::Arc<str>,
   pieces: Vec<Box<dyn puzzle::PuzzlePiece>>,
   player_effects: std::collections::BTreeMap<u8, spadina_core::avatar::Effect>,
-  player_principals: std::collections::HashMap<crate::destination::SharedPlayerId, PlayerKey>,
+  player_principals: std::collections::HashMap<crate::destination::SharedPlayerIdentifier, PlayerKey>,
   propagation_rules: Vec<spadina_core::asset::rules::PropagationRule<usize, crate::shstr::ShStr>>,
   seed: i32,
   server_name: std::sync::Arc<str>,
-  settings: crate::database::persisted::PersistedLocal<persistence::Settings>,
+  settings: crate::database::persisted::PersistedLocal<location_persistance::Settings>,
   solved: bool,
   train_next: Option<u16>,
 }
@@ -99,9 +97,9 @@ impl Realm {
             eprintln!("Failed to load {}: {}", &realm_asset_id, e);
             return Err(match e {
               spadina_core::asset_store::LoadError::Corrupt | spadina_core::asset_store::LoadError::InternalError => {
-                spadina_core::location::LocationResponse::InternalError
+                spadina_core::location::protocol::LocationResponse::InternalError
               }
-              spadina_core::asset_store::LoadError::Unknown => spadina_core::location::LocationResponse::ResolutionFailed,
+              spadina_core::asset_store::LoadError::Unknown => spadina_core::location::protocol::LocationResponse::ResolutionFailed,
             });
           }
         };
@@ -111,37 +109,37 @@ impl Realm {
             Err(e) => {
               eprintln!("Failed to load {}: {}", &realm_asset_id, e);
               return Err(match e {
-                spadina_core::AssetError::DecodeFailure
-                | spadina_core::AssetError::InternalError
-                | spadina_core::AssetError::Invalid
-                | spadina_core::AssetError::PermissionError
-                | spadina_core::AssetError::UnknownKind => spadina_core::location::LocationResponse::InternalError,
-                spadina_core::AssetError::Missing(_) => spadina_core::location::LocationResponse::ResolutionFailed,
+                spadina_core::net::server::AssetError::DecodeFailure
+                | spadina_core::net::server::AssetError::InternalError
+                | spadina_core::net::server::AssetError::Invalid
+                | spadina_core::net::server::AssetError::PermissionError
+                | spadina_core::net::server::AssetError::UnknownKind => spadina_core::location::protocol::LocationResponse::InternalError,
+                spadina_core::net::server::AssetError::Missing(_) => spadina_core::location::protocol::LocationResponse::ResolutionFailed,
               });
             }
           };
 
         let capabilities = match spadina_core::capabilities::all_supported(capabilities) {
           Ok(capabilities) => capabilities,
-          Err(capability) => return Err(spadina_core::location::LocationResponse::MissingCapabilities { capabilities: vec![capability] }),
+          Err(capability) => return Err(spadina_core::location::protocol::LocationResponse::MissingCapabilities { capabilities: vec![capability] }),
         };
         let (owner, db_id, state, seed, solved, train_next) = match launch {
           crate::destination::RealmLaunch::Existing { db_id, owner, .. } => match database.realm_load(db_id) {
             Err(e) => {
               eprintln!("Failed to load realm {}: {}", db_id, e);
-              return Err(spadina_core::location::LocationResponse::InternalError);
+              return Err(spadina_core::location::protocol::LocationResponse::InternalError);
             }
             Ok(crate::database::RealmLoadInfo { seed, solved, state, train }) => (owner, db_id, state, seed, solved, train.map(|v| v + 1)),
           },
           crate::destination::RealmLaunch::New { owner, asset, train } => {
             use rand::Rng;
-            let seed: i32 = rand::thread_rng().gen();
+            let seed: i32 = random();
             let name = realm_asset.name_for(&owner);
             match database.realm_create(&asset, &owner, &name, seed, train) {
               Ok(db_id) => (owner, db_id, None, seed, false, train.map(|v| v + 1)),
               Err(e) => {
                 eprintln!("Failed to create realm {} for {}: {}", &asset, &owner, e);
-                return Err(spadina_core::location::LocationResponse::InternalError);
+                return Err(spadina_core::location::protocol::LocationResponse::InternalError);
               }
             }
           }
@@ -154,7 +152,7 @@ impl Realm {
         let (pieces, mechanics) = match realm_asset_result {
           Err(e) => {
             eprintln!("Failed to convert realm {}: {}", db_id, e);
-            return Err(spadina_core::location::LocationResponse::InternalError);
+            return Err(spadina_core::location::protocol::LocationResponse::InternalError);
           }
           Ok((puzzle_assets, mechanics)) => (
             {
@@ -169,7 +167,7 @@ impl Realm {
                   {
                     Err(e) => {
                       eprintln!("Failed to load realm state {}: {}", db_id, e);
-                      return Err(spadina_core::location::LocationResponse::InternalError);
+                      return Err(spadina_core::location::protocol::LocationResponse::InternalError);
                     }
                     Ok(states) => states,
                   }
@@ -180,11 +178,11 @@ impl Realm {
             mechanics,
           ),
         };
-        let mut settings = match crate::database::persisted::PersistedLocal::new(database.clone(), persistence::Settings(db_id)) {
+        let mut settings = match crate::database::persisted::PersistedLocal::new(database.clone(), location_persistance::Settings(db_id)) {
           Ok(v) => v,
           Err(e) => {
             eprintln!("Failed to load realm settings {}: {}", db_id, e);
-            return Err(spadina_core::location::LocationResponse::InternalError);
+            return Err(spadina_core::location::protocol::LocationResponse::InternalError);
           }
         };
         settings.mutate(|current_settings| {
@@ -195,27 +193,27 @@ impl Realm {
           spadina_core::UpdateResult::Success
         });
         let mut realm = Realm {
-          access_acl: match crate::database::persisted::PersistedLocal::new(database.clone(), persistence::RealmAccess(db_id)) {
+          access_acl: match crate::database::persisted::PersistedLocal::new(database.clone(), location_persistance::LocationAccess(db_id)) {
             Ok(v) => v,
             Err(e) => {
               eprintln!("Failed to load realm access ACL {}: {}", db_id, e);
-              return Err(spadina_core::location::LocationResponse::InternalError);
+              return Err(spadina_core::location::protocol::LocationResponse::InternalError);
             }
           },
           active_players: Default::default(),
           asset: realm_asset_id.clone(),
-          admin_acl: match crate::database::persisted::PersistedLocal::new(database.clone(), persistence::RealmAdmin(db_id)) {
+          admin_acl: match crate::database::persisted::PersistedLocal::new(database.clone(), location_persistance::RealmAdmin(db_id)) {
             Ok(v) => v,
             Err(e) => {
               eprintln!("Failed to load realm admin ACL {}: {}", db_id, e);
-              return Err(spadina_core::location::LocationResponse::InternalError);
+              return Err(spadina_core::location::protocol::LocationResponse::InternalError);
             }
           },
-          announcements: match crate::database::persisted::PersistedLocal::new(database.clone(), persistence::RealmAnnouncements(db_id)) {
+          announcements: match crate::database::persisted::PersistedLocal::new(database.clone(), location_persistance::RealmAnnouncements(db_id)) {
             Ok(v) => v,
             Err(e) => {
               eprintln!("Failed to load realm admin ACL {}: {}", db_id, e);
-              return Err(spadina_core::location::LocationResponse::InternalError);
+              return Err(spadina_core::location::protocol::LocationResponse::InternalError);
             }
           },
           capabilities,
@@ -224,11 +222,11 @@ impl Realm {
           db_id,
           next_update: Box::pin(tokio::time::sleep(std::time::Duration::from_secs(0))),
           manifold: mechanics.manifold,
-          name_and_in_directory: match crate::database::persisted::PersistedLocal::new(database, persistence::NameAndInDirectory(db_id)) {
+          name_and_in_directory: match crate::database::persisted::PersistedLocal::new(database, location_persistance::NameAndInDirectory(db_id)) {
             Ok(v) => v,
             Err(e) => {
               eprintln!("Failed to load realm name and directory status {}: {}", db_id, e);
-              return Err(spadina_core::location::LocationResponse::InternalError);
+              return Err(spadina_core::location::protocol::LocationResponse::InternalError);
             }
           },
           owner,
@@ -463,7 +461,7 @@ impl crate::destination::Destination for Realm {
   fn capabilities(&self) -> &std::collections::BTreeSet<&'static str> {
     &self.capabilities
   }
-  fn delete(&mut self, requester: Option<crate::destination::SharedPlayerId>) -> spadina_core::UpdateResult {
+  fn delete(&mut self, requester: Option<crate::destination::SharedPlayerIdentifier>) -> spadina_core::UpdateResult {
     if requester
       .map(|requester| self.admin_acl.read().check(&requester, &self.server_name) == spadina_core::access::SimpleAccess::Allow)
       .unwrap_or(true)
@@ -479,11 +477,7 @@ impl crate::destination::Destination for Realm {
       spadina_core::UpdateResult::NotAllowed
     }
   }
-  fn get_messages(
-    &self,
-    from: chrono::DateTime<chrono::Utc>,
-    to: chrono::DateTime<chrono::Utc>,
-  ) -> Vec<spadina_core::location::LocationMessage<String>> {
+  fn get_messages(&self, from: chrono::DateTime<chrono::Utc>, to: chrono::DateTime<chrono::Utc>) -> Vec<spadina_core::space::ChatMessage<String>> {
     match self.database.realm_messages(self.db_id, from, to) {
       Ok(messages) => messages,
       Err(e) => {
@@ -495,7 +489,7 @@ impl crate::destination::Destination for Realm {
   async fn handle(
     &mut self,
     key: &crate::realm::puzzle::PlayerKey,
-    player: &crate::destination::SharedPlayerId,
+    player: &crate::destination::SharedPlayerIdentifier,
     is_superuser: bool,
     request: Self::Request,
   ) -> Vec<crate::destination::DestinationControl<Self::Response>> {
@@ -729,7 +723,7 @@ impl crate::destination::Destination for Realm {
   async fn send_message(
     &mut self,
     _: Option<&crate::realm::puzzle::PlayerKey>,
-    player: &crate::destination::SharedPlayerId,
+    player: &crate::destination::SharedPlayerIdentifier,
     body: &spadina_core::communication::MessageBody<
       impl AsRef<str> + serde::Serialize + std::fmt::Debug + std::cmp::PartialEq + std::cmp::Eq + Sync + Into<std::sync::Arc<str>>,
     >,
@@ -750,9 +744,9 @@ impl crate::destination::Destination for Realm {
   async fn consensual_emote(
     &mut self,
     requester_key: &crate::realm::puzzle::PlayerKey,
-    _: &crate::destination::SharedPlayerId,
+    _: &crate::destination::SharedPlayerIdentifier,
     target_key: &crate::realm::puzzle::PlayerKey,
-    _: &crate::destination::SharedPlayerId,
+    _: &crate::destination::SharedPlayerIdentifier,
     emote: std::sync::Arc<str>,
   ) -> Vec<crate::destination::DestinationControl<Self::Response>> {
     if let Some([requester, target]) = self.active_players.get_many_mut([requester_key, target_key]) {
@@ -784,9 +778,9 @@ impl crate::destination::Destination for Realm {
   async fn follow(
     &mut self,
     requester_key: &crate::realm::puzzle::PlayerKey,
-    _: &crate::destination::SharedPlayerId,
+    _: &crate::destination::SharedPlayerIdentifier,
     target_key: &crate::realm::puzzle::PlayerKey,
-    _: &crate::destination::SharedPlayerId,
+    _: &crate::destination::SharedPlayerIdentifier,
   ) -> Vec<crate::destination::DestinationControl<Self::Response>> {
     if let Some([requester, target]) = self.active_players.get_many_mut([requester_key, target_key]) {
       if requester.remaining_actions.is_empty()
@@ -828,7 +822,10 @@ impl crate::destination::Destination for Realm {
     key: &crate::realm::puzzle::PlayerKey,
     player: &spadina_core::player::PlayerIdentifier<std::sync::Arc<str>>,
     is_superuser: bool,
-  ) -> Result<(spadina_core::location::LocationResponse<crate::shstr::ShStr>, Vec<crate::destination::DestinationControl<Self::Response>>), ()> {
+  ) -> Result<
+    (spadina_core::location::protocol::LocationResponse<crate::shstr::ShStr>, Vec<crate::destination::DestinationControl<Self::Response>>),
+    (),
+  > {
     if is_superuser || self.access_acl.read().check(player, &self.server_name) == spadina_core::access::SimpleAccess::Allow {
       match self.manifold.warp(None) {
         Some(point) => {
@@ -859,7 +856,7 @@ impl crate::destination::Destination for Realm {
           let output = self.process_events(events).await;
           let (name, in_directory) = self.name_and_in_directory.read().clone();
           Ok((
-            spadina_core::location::LocationResponse::Realm {
+            spadina_core::location::protocol::LocationResponse::Realm {
               owner: self.owner.clone().into(),
               server: self.server_name.clone().into(),
               name: name.into(),
