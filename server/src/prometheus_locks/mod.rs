@@ -1,27 +1,35 @@
 #[macro_use]
 pub mod mutex;
 pub mod rwlock;
+
+use prometheus_client::encoding::EncodeLabelSet;
+use std::fmt::Debug;
+use std::future::Future;
+use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
 
 use prometheus_client::metrics::family::Family;
-pub trait LabelledValue<N: prometheus_client::encoding::EncodeLabelSet>: Sized + Send + Sync {
+use prometheus_client::metrics::histogram::Histogram;
+use tokio::time::Instant;
+
+pub trait LabelledValue<N: EncodeLabelSet>: Sized + Send + Sync {
   fn labels(&self) -> N;
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-struct LocationLabel<N: prometheus_client::encoding::EncodeLabelSet>(&'static str, N);
+struct LocationLabel<N: EncodeLabelSet>(&'static str, N);
 pub trait Acquirable<'a, N> {
   type Guard: 'a;
   fn labels(&self) -> N;
-  fn acquire(self) -> std::pin::Pin<Box<dyn std::future::Future<Output = Self::Guard> + Send + 'a>>;
+  fn acquire(self) -> std::pin::Pin<Box<dyn Future<Output = Self::Guard> + Send + 'a>>;
 }
 
 #[derive(Debug)]
-pub struct PrometheusLabelled<N: prometheus_client::encoding::EncodeLabelSet> {
-  hold: prometheus_client::metrics::family::Family<LocationLabel<N>, prometheus_client::metrics::histogram::Histogram>,
-  wait: prometheus_client::metrics::family::Family<LocationLabel<N>, prometheus_client::metrics::histogram::Histogram>,
+pub struct PrometheusLabelled<N: EncodeLabelSet> {
+  hold: Family<LocationLabel<N>, Histogram>,
+  wait: Family<LocationLabel<N>, Histogram>,
 }
-impl<N: prometheus_client::encoding::EncodeLabelSet> prometheus_client::encoding::EncodeLabelSet for LocationLabel<N> {
+impl<N: EncodeLabelSet> EncodeLabelSet for LocationLabel<N> {
   fn encode(&self, mut encoder: prometheus_client::encoding::LabelSetEncoder) -> Result<(), std::fmt::Error> {
     let mut label_encoder = encoder.encode_label();
     let mut label_key_encoder = label_encoder.encode_label_key()?;
@@ -34,15 +42,15 @@ impl<N: prometheus_client::encoding::EncodeLabelSet> prometheus_client::encoding
     self.1.encode(encoder)
   }
 }
-impl<N: prometheus_client::encoding::EncodeLabelSet + std::hash::Hash + Eq + Clone> Default for PrometheusLabelled<N> {
+impl<N: EncodeLabelSet + Hash + Eq + Clone> Default for PrometheusLabelled<N> {
   fn default() -> Self {
-    fn create_histogram() -> prometheus_client::metrics::histogram::Histogram {
-      prometheus_client::metrics::histogram::Histogram::new([0.1, 0.5, 1.0, 5.0, 10.0, 60.0, 300.0, 600.0].into_iter())
+    fn create_histogram() -> Histogram {
+      Histogram::new([0.1, 0.5, 1.0, 5.0, 10.0, 60.0, 300.0, 600.0].into_iter())
     }
     Self { hold: Family::new_with_constructor(create_histogram), wait: Family::new_with_constructor(create_histogram) }
   }
 }
-impl<N: prometheus_client::encoding::EncodeLabelSet + Clone + std::hash::Hash + Eq + std::fmt::Debug + Send + Sync + 'static> PrometheusLabelled<N> {
+impl<N: EncodeLabelSet + Clone + Hash + Eq + Debug + Send + Sync + 'static> PrometheusLabelled<N> {
   pub fn register(&self, registry: &mut prometheus_client::registry::Registry, name: &str, purpose: &str) {
     registry.register(format!("spadina_{}_waiting", name), format!("The time spent waiting to acquire a lock for {}.", purpose), self.wait.clone());
     registry.register(format!("spadina_{}_holding", name), format!("The time spent waiting to acquire a lock for {}.", purpose), self.hold.clone());
@@ -52,51 +60,42 @@ impl<N: prometheus_client::encoding::EncodeLabelSet + Clone + std::hash::Hash + 
     &'a self,
     location: &'static str,
     acquisition_labels: N,
-    acquire: impl std::future::Future<Output = Guard> + Send + 'a,
-  ) -> PrometheusLabelledGuard<N, Guard> {
+    acquire: impl Future<Output = Guard> + Send + 'a,
+  ) -> PrometheusLabelledGuard<'a, N, Guard> {
     let labels = LocationLabel(location, acquisition_labels);
-    let wait = tokio::time::Instant::now();
+    let wait = Instant::now();
     let guard = acquire.await;
-    let hold = tokio::time::Instant::now();
+    let hold = Instant::now();
     self.wait.get_or_create(&labels).observe((hold - wait).as_secs_f64());
 
     PrometheusLabelledGuard { hold, labels, owner: self, guard }
   }
 }
-pub struct PrometheusLabelledGuard<'a, N: prometheus_client::encoding::EncodeLabelSet + Clone + Eq + PartialEq + std::fmt::Debug + std::hash::Hash, G>
-{
+pub struct PrometheusLabelledGuard<'a, N: EncodeLabelSet + Clone + Eq + PartialEq + Debug + Hash, G> {
   guard: G,
   labels: LocationLabel<N>,
   owner: &'a PrometheusLabelled<N>,
-  hold: tokio::time::Instant,
+  hold: Instant,
 }
-impl<'a, N: prometheus_client::encoding::EncodeLabelSet + Clone + Eq + PartialEq + std::fmt::Debug + std::hash::Hash, G: Deref> Deref
-  for PrometheusLabelledGuard<'a, N, G>
-{
+impl<'a, N: EncodeLabelSet + Clone + Eq + PartialEq + Debug + Hash, G: Deref> Deref for PrometheusLabelledGuard<'a, N, G> {
   type Target = G::Target;
 
   fn deref(&self) -> &G::Target {
     self.guard.deref()
   }
 }
-impl<'a, N: prometheus_client::encoding::EncodeLabelSet + Clone + Eq + PartialEq + std::fmt::Debug + std::hash::Hash, G> Drop
-  for PrometheusLabelledGuard<'a, N, G>
-{
+impl<'a, N: EncodeLabelSet + Clone + Eq + PartialEq + Debug + Hash, G> Drop for PrometheusLabelledGuard<'a, N, G> {
   fn drop(&mut self) {
-    self.owner.hold.get_or_create(&self.labels).observe((tokio::time::Instant::now() - self.hold).as_secs_f64());
+    self.owner.hold.get_or_create(&self.labels).observe((Instant::now() - self.hold).as_secs_f64());
   }
 }
 
-impl<'a, N: prometheus_client::encoding::EncodeLabelSet + Clone + Eq + PartialEq + std::fmt::Debug + std::hash::Hash, G: DerefMut> DerefMut
-  for PrometheusLabelledGuard<'a, N, G>
-{
+impl<'a, N: EncodeLabelSet + Clone + Eq + PartialEq + Debug + Hash, G: DerefMut> DerefMut for PrometheusLabelledGuard<'a, N, G> {
   fn deref_mut(&mut self) -> &mut G::Target {
     self.guard.deref_mut()
   }
 }
-impl<T: Sized + Send + Sync + prometheus_client::encoding::EncodeLabelSet + Clone + Eq + PartialEq + std::fmt::Debug + std::hash::Hash>
-  LabelledValue<T> for T
-{
+impl<T: Sized + Send + Sync + EncodeLabelSet + Clone + Eq + PartialEq + Debug + Hash> LabelledValue<T> for T {
   fn labels(&self) -> T {
     self.clone()
   }

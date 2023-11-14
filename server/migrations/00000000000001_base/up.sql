@@ -1,185 +1,165 @@
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
-CREATE FUNCTION gen_calendar_id() RETURNS bytea 
-LANGUAGE plpgsql
-  AS
-$$
-DECLARE 
-BEGIN
- RETURN gen_random_bytes(10);
-END;
-$$;
-
-CREATE TABLE BannedPeers (
-    ban jsonb UNIQUE NOT NULL,
-    PRIMARY KEY (ban)
-);
-
-CREATE TABLE Announcement (
-    id serial PRIMARY KEY NOT NULL,
+CREATE TABLE announcement (
+    id int PRIMARY KEY NOT NULL,
     title text NOT NULL,
     body text NOT NULL,
-    "when" jsonb NOT NULL,
-    realm jsonb NOT NULL,
+    "when" blob NOT NULL,
+    location blob NOT NULL,
     "public" boolean NOT NULL
 );
 
-CREATE TABLE Player (
-    id serial PRIMARY KEY NOT NULL,
+CREATE TABLE player (
+    id int PRIMARY KEY NOT NULL,
     name text NOT NULL,
-    debuted boolean NOT NULL,
-    avatar jsonb NOT NULL,
-    message_acl jsonb NOT NULL,
-    online_acl jsonb NOT NULL,
-    new_realm_access_acl jsonb NOT NULL,
-    new_realm_admin_acl jsonb NOT NULL,
+    avatar blob NOT NULL,
+    message_acl blob NOT NULL,
+    online_acl blob NOT NULL,
+    default_location_acl blob NOT NULL,
     reset boolean NOT NULL DEFAULT FALSE,
-    calendar_id bytea NOT NULL DEFAULT gen_calendar_id(),
-    last_login timestamp WITH time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    created timestamp WITH time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
+    calendar_id blob NOT NULL,
+    last_login timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX player_name ON player(name);
 CREATE INDEX player_calendar_id ON player(calendar_id);
 
-CREATE TABLE LocalPlayerChat (
-    sender int4 NOT NULL,
-    recipient int4 NOT NULL,
-    created timestamp WITH time zone NOT NULL,
-    body jsonb NOT NULL,
+CREATE TABLE local_player_chat (
+    sender int NOT NULL,
+    recipient int NOT NULL,
+    created timestamp NOT NULL,
+    body blob NOT NULL,
     PRIMARY KEY (sender, recipient, created),
-    CONSTRAINT local_playerchat_sender_player_id FOREIGN KEY (sender) REFERENCES Player (id),
-    CONSTRAINT local_playerchat_recipient_player_id FOREIGN KEY (recipient) REFERENCES Player (id)
+    CONSTRAINT local_playerchat_sender_player_id FOREIGN KEY (sender) REFERENCES player (id),
+    CONSTRAINT local_playerchat_recipient_player_id FOREIGN KEY (recipient) REFERENCES player (id)
 );
 
-CREATE INDEX localplayerchat_recipient ON localplayerchat(recipient);
-CREATE INDEX localplayerchat_by_timestamp ON localplayerchat (sender, recipient, created);
+CREATE INDEX localplayerchat_recipient ON local_player_chat(recipient);
+CREATE INDEX localplayerchat_by_timestamp ON local_player_chat (sender, recipient, created);
 
-CREATE TABLE LocalPlayerLastRead (
-    sender int4 NOT NULL,
-    recipient int4 NOT NULL,
-    "when" timestamp WITH time zone NOT NULL,
+CREATE TABLE local_player_last_read (
+    sender int NOT NULL,
+    recipient int NOT NULL,
+    "when" timestamp NOT NULL,
     PRIMARY KEY (sender, recipient),
-    CONSTRAINT local_playerlastread_sender_player_id FOREIGN KEY (sender) REFERENCES Player (id),
-    CONSTRAINT local_playerlastread_recipient_player_id FOREIGN KEY (recipient) REFERENCES Player (id)
+    CONSTRAINT local_playerlastread_sender_player_id FOREIGN KEY (sender) REFERENCES player (id),
+    CONSTRAINT local_playerlastread_recipient_player_id FOREIGN KEY (recipient) REFERENCES player (id)
 );
 
-CREATE TABLE RemotePlayerChat (
-    player int4 NOT NULL,
+CREATE TABLE remote_player_chat (
+    player int NOT NULL,
     inbound boolean NOT NULL,
     remote_player text NOT NULL,
     remote_server text NOT NULL,
-    created timestamp WITH time zone NOT NULL,
-    body jsonb NOT NULL,
+    created timestamp NOT NULL,
+    body blob NOT NULL,
     PRIMARY KEY (remote_player, remote_server, created, player, inbound),
-    CONSTRAINT remote_playerchat_player_id FOREIGN KEY (player) REFERENCES Player (id)
+    CONSTRAINT remote_playerchat_player_id FOREIGN KEY (player) REFERENCES player (id)
 );
 
-CREATE INDEX remoteplayerchat_by_timestamp ON remoteplayerchat (player, remote_server, remote_player, created);
+CREATE INDEX remoteplayerchat_by_timestamp ON remote_player_chat (player, remote_server, remote_player, created);
 
-CREATE TABLE RemotePlayerLastRead (
-    player int4 NOT NULL,
+CREATE TABLE remote_player_last_read (
+    player int NOT NULL,
     remote_player text NOT NULL,
     remote_server text NOT NULL,
-    "when" timestamp WITH time zone NOT NULL,
+    "when" timestamp NOT NULL,
     PRIMARY KEY (player, remote_player, remote_server),
-    CONSTRAINT remote_playerlastread_player_id FOREIGN KEY (player) REFERENCES Player (id)
+    CONSTRAINT remote_playerlastread_player_id FOREIGN KEY (player) REFERENCES player (id)
 );
 
-CREATE TABLE Realm (
-    id serial PRIMARY KEY NOT NULL,
-    train int4,
+CREATE TABLE location (
+    id int PRIMARY KEY NOT NULL,
     name text NOT NULL,
-    owner int4 NOT NULL,
-    asset text NOT NULL,
-    state jsonb,
-    settings jsonb NOT NULL,
-    access_acl jsonb NOT NULL,
-    admin_acl jsonb NOT NULL,
-    in_directory boolean NOT NULL,
-    seed int4 NOT NULL,
-    solved boolean NOT NULL DEFAULT false,
-    created timestamp WITH time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamp WITH time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT realm_player_id FOREIGN KEY (owner) REFERENCES Player (id),
-    CONSTRAINT realm_only_per_player UNIQUE (owner, asset)
+    owner int NOT NULL,
+    descriptor blob NOT NULL,
+    state blob NOT NULL,
+    acl blob NOT NULL,
+    visibility smallint NOT NULL,
+    visibility_changed timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT location_player_id FOREIGN KEY (owner) REFERENCES player (id),
+    CONSTRAINT location_only_per_player UNIQUE (owner, descriptor)
 );
 
-CREATE INDEX realm_asset ON realm(asset);
-CREATE INDEX realm_in_directory ON realm(in_directory);
-CREATE INDEX realm_owner_train ON realm(owner, train);
+CREATE INDEX location_descriptor ON location(descriptor);
+CREATE INDEX location_visibility ON location(visibility);
 
-SELECT diesel_manage_updated_at('Realm');
-
-CREATE TABLE RealmChat (
-    realm int4 NOT NULL,
-    principal jsonb NOT NULL,
-    created timestamp WITH time zone NOT NULL,
-    body jsonb NOT NULL,
-    PRIMARY KEY (principal, created, realm),
-    CONSTRAINT realmchat_realm_id FOREIGN KEY (realm) REFERENCES Realm (id)
+CREATE TABLE location_chat (
+    location int NOT NULL,
+    principal blob NOT NULL,
+    created timestamp NOT NULL,
+    body blob NOT NULL,
+    PRIMARY KEY (principal, created, location),
+    CONSTRAINT locationchat_location_id FOREIGN KEY (location) REFERENCES location (id)
 );
 
-CREATE INDEX realmchat_by_timestamp ON realmchat (realm, created);
+CREATE INDEX locationchat_by_timestamp ON location_chat (location, created);
 
-CREATE TABLE RealmAnnouncement (
-    id serial PRIMARY KEY NOT NULL,
-    realm int4 NOT NULL,
+CREATE TABLE location_announcement (
+    id int PRIMARY KEY NOT NULL,
+    location int NOT NULL,
     title text NOT NULL,
     body text NOT NULL,
-    "when" jsonb NOT NULL,
+    "when" blob NOT NULL,
     "public" boolean NOT NULL,
-    CONSTRAINT realmannouncement_realm_id FOREIGN KEY (realm) REFERENCES Realm (id)
+    expires timestamp NOT NULL,
+    CONSTRAINT locationannouncement_location_id FOREIGN KEY (location) REFERENCES location (id)
 );
 
-CREATE TABLE RealmCalendarSubscription (
-    realm int4 NOT NULL,
-    player int4 NOT NULL,
-    PRIMARY KEY (realm, player),
-    CONSTRAINT realm_calendar_subscription_player_id FOREIGN KEY (player) REFERENCES Player (id),
-    CONSTRAINT realm_calendar_subscription_realm_id FOREIGN KEY (realm) REFERENCES Realm (id)
+CREATE TABLE location_calendar_subscription (
+    location int NOT NULL,
+    player int NOT NULL,
+    PRIMARY KEY (location, player),
+    CONSTRAINT location_calendar_subscription_player_id FOREIGN KEY (player) REFERENCES player (id),
+    CONSTRAINT location_calendar_subscription_location_id FOREIGN KEY (location) REFERENCES location (id)
 );
 
-CREATE TABLE ServerACL (
+CREATE TABLE remote_calendar_subscription (
+    owner text NOT NULL,
+    server text NOT NULL,
+    descriptor blob NOT NULL,
+    player int NOT NULL,
+    PRIMARY KEY (server, owner, descriptor, player),
+    CONSTRAINT remote_calendar_subscription_player_id FOREIGN KEY (player) REFERENCES player (id)
+);
+
+CREATE TABLE server_setting (
     category varchar(1) NOT NULL,
-    acl jsonb NOT NULL,
+    data blob NOT NULL,
     PRIMARY KEY (category)
 );
 
-CREATE TABLE AuthOIDC (
-    name text NOT NULL,
-    subject text NOT NULL,
-    locked boolean NOT NULL DEFAULT false,
-    issuer text,
-    PRIMARY KEY (name)
-);
-
-CREATE TABLE AuthOTP (
-    name text NOT NULL,
-    code text NOT NULL,
-    locked boolean NOT NULL DEFAULT false,
-    PRIMARY KEY (name, code)
-);
-
-CREATE TABLE Bookmark (
-    player int4 NOT NULL,
-    value jsonb NOT NULL,
+CREATE TABLE bookmark (
+    player int NOT NULL,
+    value blob NOT NULL,
     PRIMARY KEY(player, value),
-    CONSTRAINT bookmark_player_id FOREIGN KEY (player) REFERENCES Player (id)
+    CONSTRAINT bookmark_player_id FOREIGN KEY (player) REFERENCES player (id)
 );
 
-CREATE TABLE PublicKey (
-    player int4 NOT NULL,
+CREATE TABLE public_key (
+    player int NOT NULL,
     fingerprint text NOT NULL,
-    public_key bytea NOT NULL,
-    last_used timestamp WITH time zone,
-    created timestamp WITH time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    key blob NOT NULL,
+    last_used timestamp,
+    created timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (player, fingerprint),
-    CONSTRAINT host_player_id FOREIGN KEY (player) REFERENCES Player (id)
+    CONSTRAINT public_key_player_id FOREIGN KEY (player) REFERENCES player (id)
 );
 
-CREATE TABLE RealmTrain (
-   asset text NOT NULL,
-   allowed_first boolean NOT NULL,
-   PRIMARY KEY (asset)
+CREATE TABLE calendar_cache (
+    player int NOT NULL,
+    server text NOT NULL,
+    calendar_entries blob NOT NULL,
+    last_used timestamp,
+    last_requested timestamp,
+    last_updated timestamp,
+    created timestamp NOT NULL,
+    PRIMARY KEY (player, server),
+    CONSTRAINT calendar_cache_player_id FOREIGN KEY (player) REFERENCES player (id)
 );
+
+CREATE VIEW player_size AS
+  SELECT SUM(length(location.state) + length(location.acl)) AS total, player.name AS player
+  FROM player JOIN location ON Player.id = location.owner
+  GROUP BY player.name;

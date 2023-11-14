@@ -39,49 +39,11 @@ Spadina was designed to meet a few goals:
 - resilience:  like any distributed system, parts of the system will be in a failed state and the surrounding infrastructure needs to continue operating
 - limit cheating: make sure players with technical skills can't introspect the puzzle state
 
-To this end, the sever/client split is somewhat different than most MMOs. The authoritatively server synchronises all behaviour in the game (rather than allowing clients to predict what will happen and try to reconcile on the server). To make the latency acceptable, the game dispenses with real-time navigation and physics.
-
-Each realm has an associated state on the server. Some of that state is journaled to the server's database. Upon loading a realm, the server decomposes it into:
-
-- the walk manifold; a collection of planes that the players can walk on with connection between them. Some of these paths can be controlled by puzzle elements.
-- the puzzles elements (_puzzle pieces_)
-- the puzzle rules
-- the puzzle outputs
-- location history and future of each player
-
-The server and client have different information they need out of the realm description and they are going to have matched information on:
-
-- the puzzle inputs
-- the puzzle outputs
-
-A server will create a realm and initialise all the puzzle pieces and journal
-their state to the database. As players arrive, the server will place them at
-the spawn point for the world. When a player wishes to move, the client will
-compute a path the player wishes to walk and send it to the server. The server
-will validate the path up to the point where it requires interaction with a
-puzzle element. This is a players _committed path_, because the server is
-convinced the player will walk it. It then sends this path, with timestamps, to
-all clients. If the path involves interacting with a puzzle-controlled element,
-the server will store the path for later. At the appropriate time, the server
-will determine if the puzzle is in a state where the player is allowed to cross
-a puzzle-controlled gate. If permitted, the server will commit the next chunk
-of path and distribute it to the clients. Paths can include interaction with
-puzzle pieces.
-
-When a player interacts with a puzzle piece, the server will trigger the puzzle
-piece to accept the interaction event. The piece can decide how to update its
-state. There are also puzzle pieces that operate on timers. When a puzzle piece
-is updated, it can emit events about its new state. The rules are used to
-propagate events from one puzzle piece to the next. To prevent malicious realms
-from overloading a server, there is a maximum number of rounds of updates that
-a single event can produce.
-
-The rules also include output rules that set values that are pushed to the
-client. These values can be used by the client to update the display of the
-puzzle. These output values are part of the anti-cheating mechanism since the
-true puzzle state is hidden on the server and only these outputs are available
-to the clients. This also helps with bandwidth use since the server can send
-small amounts of information that can cause a lot to happen on the client.
+To this end, the sever/client split is somewhat different than most MMOs. The
+authoritatively server synchronises all behaviour in the game (rather than
+allowing clients to predict what will happen and try to reconcile on the
+server). To make the latency acceptable, the game dispenses with real-time
+navigation and physics.
 
 ## Content Addressable Memory
 Each asset required is stored in Message Pack format and is identified by a
@@ -109,3 +71,42 @@ all the capabilities required by a realm even if the effects are mostly client
 side. A client accessing a realm on a remote server should be able to use
 capabilities its local server doesn't support since the local server doesn't
 need to read the assets directly.
+
+## Applets
+In a strange way, each realm is a small program running on the server. The
+realm's asset functions as the code for the realm and the state information is
+the program's memory. This idea became extended out to allow non-realm things
+to run on the server as long as they can behave in a similar enough way. In
+particular, the game editor can become an in-network object.
+
+Each applet has a front-end and back-end. The front-end runs on the client and
+the back-end runs on the server. They can communicate to each other in their
+own specific network protocol that's transported over the client-server
+connection. This means that some functions, such as database interaction,
+access control, and federation are abstracted out of the applets.
+
+The front-end has an API with the following constraints:
+
+- it may receive an update from the back-end at any time
+- it may recieve input from the user at any time
+- it can generate and manage a user interface and callbacks
+- it can have internal state, but this state is not persisted
+
+The back-end has an API with the following constraints:
+
+- it may recieve an update from any front-end (with an associated player identifier) at any time
+- it can set a watch dog timer and be notified if it elapses
+- it can have internal state and this state will be persisted to the server's database
+- it must be able to reload itself from the persisted state (and a realm asset)
+- the persisted state must convertible to JSON, JSONB, or Message Pack
+
+### Weird Philosophy Tangent
+In a strange way, this game has become a reimaging of modern web architecture.
+Ooops. The client is in some way, a browser, providing a set of UI primitives.
+As a browser provides UI primitive based on the DOM, Spadina is attempting to
+provide UI primitives for 3D graphics and UI widgets. Unlike a normal web
+client/server application, the communication is an asynchronous stream of
+messages, rather than RPC-like behaviour. The implementations of the front and
+back-ends are intended to be built into the client and server directly, but
+that's not a hard requirement and it would be completely sensible to allow
+implementing them in WASM and allow dynamic loading.

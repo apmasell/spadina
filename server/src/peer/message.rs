@@ -1,150 +1,123 @@
+use crate::database::CalendarCacheEntries;
+use serde::Serialize;
+use spadina_core::asset::Asset;
+use spadina_core::avatar::Avatar;
+use spadina_core::communication::{DirectMessageStatus, MessageBody};
+use spadina_core::location::change::LocationChangeResponse;
+use spadina_core::location::directory::{Activity, DirectoryEntry, SearchCriteria};
+use spadina_core::location::protocol::{LocationRequest, LocationResponse};
+use spadina_core::location::target::{LocalTarget, UnresolvedTarget};
+use spadina_core::location::Descriptor;
+use spadina_core::player::OnlineState;
+use std::hash::Hash;
+use tokio_tungstenite::tungstenite::Message;
+
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
-pub enum VisitorTarget {
-  Realm { owner: std::sync::Arc<str>, asset: std::sync::Arc<str> },
-  Host { host: std::sync::Arc<str> },
+pub enum VisitorTarget<S: AsRef<str>> {
+  Location { owner: S, descriptor: Descriptor<S> },
+  Host { host: S },
 }
 
-/// Messages exchanged between servers; all though there is a client/server relationship implied by Web Sockets, the connection is peer-to-peer, therefore, there is no distinction between requests and responses in this structure
+/// Messages exchanged between servers; although there is a client/server relationship implied by Web Sockets, the connection is peer-to-peer, therefore, there is no distinction between requests and responses in this structure
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
-pub enum PeerMessage<S: AsRef<str> + std::cmp::Ord + std::cmp::Eq + std::hash::Hash> {
+pub enum PeerMessage<S: AsRef<str> + Ord + Eq + Hash, B: AsRef<[u8]>> {
   /// Request assets from this server if they are available
-  AssetsPull {
-    assets: Vec<S>,
+  AssetRequest {
+    id: u32,
+    asset: S,
   },
   /// Send assets requested by the other server
-  AssetsPush {
-    assets: std::collections::BTreeMap<S, Option<spadina_core::asset::Asset>>,
+  AssetResponseOk {
+    id: u32,
+    asset: Asset<S, B>,
+  },
+  AssetResponseMissing {
+    id: u32,
   },
   /// Change the avatar of a player
   AvatarSet {
+    avatar: Avatar,
     player: S,
-    avatar: spadina_core::avatar::Avatar,
   },
-  ConsensualEmoteRequestInitiate {
+  CalendarRequest {
+    id: u32,
+    locations: Vec<LocalTarget<S>>,
     player: S,
-    emote: S,
-    recipient: spadina_core::player::PlayerIdentifier<S>,
   },
-  ConsensualEmoteRequestFromLocation {
-    id: i32,
-    player: S,
-    emote: S,
-    sender: spadina_core::player::PlayerIdentifier<S>,
-  },
-  ConsensualEmoteResponse {
-    player: S,
-    id: i32,
-    ok: bool,
+  CalendarResponse {
+    id: u32,
+    entries: CalendarCacheEntries<S>,
   },
   /// Transfer a direct message
   DirectMessage {
-    id: i32,
+    id: u32,
     sender: S,
     recipient: S,
-    body: spadina_core::communication::MessageBody<S>,
+    body: MessageBody<S>,
   },
   DirectMessageResponse {
-    id: i32,
-    status: spadina_core::communication::DirectMessageStatus,
+    id: u32,
+    status: DirectMessageStatus,
   },
-  FollowRequestInitiate {
+  HostActivityRequest {
+    id: u32,
     player: S,
-    target: spadina_core::player::PlayerIdentifier<S>,
   },
-  FollowRequestFromLocation {
-    player: S,
-    id: i32,
-    source: spadina_core::player::PlayerIdentifier<S>,
-  },
-  FollowResponse {
-    player: S,
-    id: i32,
-    ok: bool,
-  },
-  /// Make request in self-hosted connection to host
-  GuestRequest {
-    player: S,
-    request: spadina_core::self_hosted::GuestRequest<S>,
-  },
-  /// Send response in self-hosted connection to guest
-  GuestResponse {
-    player: S,
-    response: spadina_core::self_hosted::GuestResponse<S>,
+  HostActivityResponse {
+    id: u32,
+    activity: Activity,
   },
   /// Result of attempt to join a host
   LocationChange {
     player: S,
-    response: spadina_core::location::LocationResponse<S>,
+    response: LocationChangeResponse<S>,
   },
-  /// A collection of messages when a time range was queried
-  LocationMessages {
+  /// Process a realm-related request for a player that has been handed off to this server
+  LocationRequest {
     player: S,
-    messages: Vec<spadina_core::location::LocationMessage<S>>,
-    from: chrono::DateTime<chrono::Utc>,
-    to: chrono::DateTime<chrono::Utc>,
+    request: LocationRequest<S, B>,
   },
-  /// Retrieve older messages for a location
-  LocationMessagesGet {
+  /// Receive a realm-related response for a player that has been handed off to this server
+  LocationResponse {
     player: S,
-    from: chrono::DateTime<chrono::Utc>,
-    to: chrono::DateTime<chrono::Utc>,
+    response: LocationResponse<S, B>,
   },
-  /// A message was posted in the current realm's chat.
-  LocationMessagePosted {
-    player: S,
-    message: spadina_core::location::LocationMessage<S>,
+  /// List realms that are on this server
+  LocationsList {
+    id: u32,
+    query: PeerLocationSearch<S>,
   },
-  /// Send a message to the group chat associated with the location we are currently logged into. If
-  /// not in a location, the server should discard the message.
-  LocationMessageSend {
-    player: S,
-    body: spadina_core::communication::MessageBody<S>,
+  /// The realms that are available on this server
+  LocationsAvailable {
+    id: u32,
+    locations: Vec<DirectoryEntry<S>>,
   },
-
+  LocationsUnavailable {
+    id: u32,
+  },
   /// Check the online status of a player
   OnlineStatusRequest {
+    id: u32,
     requester: S,
     target: S,
   },
   /// Send the online status of a player
   OnlineStatusResponse {
-    requester: S,
-    target: S,
-    state: spadina_core::player::PlayerLocationState<S>,
-  },
-  /// Process a realm-related request for a player that has been handed off to this server
-  RealmRequest {
-    player: S,
-    request: spadina_core::realm::RealmRequest<S>,
-  },
-  /// Receive a realm-related response for a player that has been handed off to this server
-  RealmResponse {
-    player: S,
-    response: spadina_core::realm::RealmResponse<S>,
-  },
-  /// List realms that are on this server
-  RealmsList {
-    id: i32,
-    source: PeerRealmSource<S>,
-  },
-  /// The realms that are available on this server
-  RealmsAvailable {
-    id: i32,
-    available: Vec<spadina_core::realm::RealmDirectoryEntry<S>>,
+    id: u32,
+    state: OnlineState<S>,
   },
   /// Releases control of a player to the originating server
   VisitorRelease {
     player: S,
-    target: Option<spadina_core::realm::RealmTarget<S>>,
+    target: UnresolvedTarget<S>,
   },
   /// Send player to a realm on the destination server
   ///
   /// This transfers control of that player to the peer server until the originating server yanks them back or the destination server send them back
   VisitorSend {
-    capabilities: Vec<S>,
     player: S,
-    target: VisitorTarget,
-    avatar: spadina_core::avatar::Avatar,
+    target: VisitorTarget<S>,
+    avatar: Avatar,
   },
   /// Forces a player to be removed from a peer server by the originating server
   VisitorYank {
@@ -153,9 +126,13 @@ pub enum PeerMessage<S: AsRef<str> + std::cmp::Ord + std::cmp::Eq + std::hash::H
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
-pub enum PeerRealmSource<S: AsRef<str>> {
-  InDirectory,
-  Specific { realms: Vec<spadina_core::realm::LocalRealmTarget<S>> },
+pub enum PeerLocationSearch<S: AsRef<str>> {
+  Public,
+  Search { query: SearchCriteria<String> },
+  Specific { locations: Vec<LocalTarget<S>> },
 }
-
-impl<S: AsRef<str> + std::cmp::Ord + std::cmp::Eq + std::hash::Hash + serde::Serialize> spadina_core::net::ToWebMessage for PeerMessage<S> {}
+impl<S: AsRef<str> + Ord + Eq + Hash + Serialize, B: AsRef<[u8]> + Serialize> From<PeerMessage<S, B>> for Message {
+  fn from(value: PeerMessage<S, B>) -> Self {
+    Message::Binary(rmp_serde::to_vec_named(&value).expect("Failed to serialize message").into())
+  }
+}

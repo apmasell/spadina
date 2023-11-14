@@ -1,4 +1,9 @@
+use spadina_core::asset::Asset;
+use spadina_core::asset_store::file_system_asset_store::FileSystemAssetStore;
 use spadina_core::asset_store::AssetStore;
+use spadina_core::reference_converter::ForPacket;
+use std::sync::Arc;
+
 #[derive(Debug)]
 enum Command {
   Install,
@@ -29,8 +34,6 @@ fn main() {
   }
   args.insert(0, format!("subcommand {:?}", subcommand));
 
-  let asset_store = spadina_core::asset_store::FileSystemStore::new(std::path::Path::new(&directory), [4, 4, 8].iter().cloned());
-
   match subcommand {
     Command::Install => {
       let mut directory = String::new();
@@ -47,16 +50,20 @@ fn main() {
           }
         }
       }
+      let asset_store = Arc::new(FileSystemAssetStore::new(directory, [4, 4, 8].iter().cloned()));
 
       let mut zip =
         zip::ZipArchive::new(std::fs::OpenOptions::new().read(true).open(zip_path).expect("Cannot open ZIP file")).expect("ZIP file is corrupt");
+      let mut runtime = tokio::runtime::Runtime::new().expect("Failed to initialize runtime");
       for i in 0..zip.len() {
         let mut file = zip.by_index(i).expect("Couldn't read file");
-        if !asset_store.check(file.name()) {
-          let asset = rmp_serde::from_read(&mut file).expect("Failed to unpack file");
-          asset_store.push(file.name(), &asset);
-        }
+        let asset = rmp_serde::from_read::<_, Asset<String, Vec<u8>>>(&mut file).expect("Failed to unpack file");
+        let asset_store = asset_store.clone();
+        runtime.spawn(async move { asset_store.push(&asset.principal_hash(), &asset.reference(ForPacket)).await });
       }
+    }
+    Command::Connect => {
+      todo!()
     }
   }
 }

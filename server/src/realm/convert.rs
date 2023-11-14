@@ -56,7 +56,7 @@ pub(crate) fn convert_realm(
   >,
   seed: Option<i32>,
   server_name: &std::sync::Arc<str>,
-) -> Result<(Vec<std::boxed::Box<(dyn crate::realm::puzzle::PuzzleAsset + 'static)>>, RealmMechanics), spadina_core::AssetError> {
+) -> Result<(Vec<std::boxed::Box<(dyn crate::realm::puzzle::PuzzleAsset + 'static)>>, RealmMechanics), spadina_core::net::server::AssetError> {
   fn create_asset_for_logic(logic: &spadina_core::asset::LogicElement, piece_assets: &mut Vec<Box<dyn crate::realm::puzzle::PuzzleAsset>>) {
     piece_assets.push(match logic {
       &spadina_core::asset::LogicElement::Arithemetic(operation) => {
@@ -820,7 +820,7 @@ pub(crate) fn convert_realm(
       },
     ));
   }
-  Err(spadina_core::AssetError::Invalid)
+  Err(spadina_core::net::server::AssetError::Invalid)
 }
 impl IdSource for spadina_core::asset::Argument<std::sync::Arc<str>> {
   fn extract(&self, ids: &mut std::collections::HashSet<spadina_core::realm::PropertyKey<std::sync::Arc<str>>>) {

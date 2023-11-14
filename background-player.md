@@ -18,7 +18,7 @@ _Community_: The game should be a place where players want to congregate, spend 
 
 _Exploration_: There should be as much world as possible for players to discover and experience. Cyan's _Riven_ was described as being a budget holiday; this should be the same.
 
-_Distinctive Worlds_: Each world should be distinctive (if the designer chooses this).
+_Distinctive Worlds_: Each world should be distinctive (based on the designer's choices).
 
 ## Summary
 In the Cyan games, Cyan creates fantastic worlds in service of telling stories
@@ -43,18 +43,19 @@ account. Every player is identified as _player_`@`_example.com_.
 
 When you log in, you will be taken to your home world (_realm_). At any time,
 you can choose to travel to another realm, including your home realm. The
-directory tool allows you to find realms. There are a few ways to locate a
-realm:
+directory allows you to find realms. There are a few ways to locate a realm:
 
 - it is a realm that you created
 - it is a _public_ realm on your server
 - it is a public realm on another server
 - it is a realm you have bookmarked
-- the address has been shared by another method
+- it was shared in chat
+- it is associated with an announcement (calendar event)
+- it was shared externally using a URL
 
 Each realm has a URL that can be placed in other programs used in other
-programs (_e.g._, shared in email or Twitter). Every realm has a player that
-owns that realm. The owner can choose to place that realm in the public
+programs (_e.g._, shared in email or social media). Every realm has a player
+that owns that realm. The owner can choose to place that realm in the public
 directory for their server, so that other players can easily find it. You can
 also choose to list your realms in the public directory for your server. There
 is no master list of servers, so accessing the public directory requires
@@ -92,27 +93,16 @@ will.
 You can also choose to erase a realm that you own. It will no longer be
 available to you or other players.
 
-## Train-car Mode
-In the TV series [_Infinity Train_](https://infinity-train.fandom.com/),
-characters travel through a series of train cars, each with a separate world
-inside, where the characters must travel solve puzzles to unlock the door
-allowing them to proceed to the next car. Spadina has a "train mode" where
-the administrator can add appropriate realms to a list and you can play through
-them in a random order.
-
-Train realms are not really different from regular realms except that they have
-a goal that is supposed to send you to the next train car. If a train realm is
-created directly (rather than through the automatic disc-jockey mechanism), the
-goal will send you to your home realm. This will also happen when the queue of
-realms is empty. If new realms are added by your administrator, a new realm
-will be automatically created. In the realm navigator, train car realms will be
-marked with their sequence number.
-
-The realm navigator will allow you start a train.
-
 ## Other Features
 Like any good social network, the system also supports direct messages between
 players of any server. There are also access controls if you wish to block
 receiving direct messages from other players or all players on a server.
 
-The server can also track bookmarks for realms, other players, and assets.
+The server can also track bookmarks for realms, other players, and assets and
+these can be easily shared using the chat or exported as a URL that can be
+embedded in email, other chat applications, or social media.
+
+Since having fun together requires coordination, there is also an announcement
+system. Administrators can create server-wide announcements and players can
+create announcements in their own realms. A customised calendar can be exported
+to Google Calendar, Outlook, or iCalendar to help keep track of events.

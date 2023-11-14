@@ -2,195 +2,181 @@
 
 diesel::table! {
     announcement (id) {
-        id -> Int4,
+        id -> Integer,
         title -> Text,
         body -> Text,
-        when -> Jsonb,
-        realm -> Jsonb,
+        when -> Binary,
+        location -> Binary,
         public -> Bool,
-    }
-}
-
-diesel::table! {
-    authoidc (name) {
-        name -> Text,
-        subject -> Text,
-        locked -> Bool,
-        issuer -> Nullable<Text>,
-    }
-}
-
-diesel::table! {
-    authotp (name, code) {
-        name -> Text,
-        code -> Text,
-        locked -> Bool,
-    }
-}
-
-diesel::table! {
-    bannedpeers (ban) {
-        ban -> Jsonb,
     }
 }
 
 diesel::table! {
     bookmark (player, value) {
-        player -> Int4,
-        value -> Jsonb,
+        player -> Integer,
+        value -> Binary,
     }
 }
 
 diesel::table! {
-    localplayerchat (sender, recipient, created) {
-        sender -> Int4,
-        recipient -> Int4,
-        created -> Timestamptz,
-        body -> Jsonb,
+    calendar_cache (player, server) {
+        player -> Integer,
+        server -> Text,
+        calendar_entries -> Binary,
+        last_used -> Nullable<Timestamp>,
+        last_requested -> Nullable<Timestamp>,
+        last_updated -> Nullable<Timestamp>,
+        created -> Timestamp,
     }
 }
 
 diesel::table! {
-    localplayerlastread (sender, recipient) {
-        sender -> Int4,
-        recipient -> Int4,
-        when -> Timestamptz,
+    local_player_chat (sender, recipient, created) {
+        sender -> Integer,
+        recipient -> Integer,
+        created -> Timestamp,
+        body -> Binary,
+    }
+}
+
+diesel::table! {
+    local_player_last_read (sender, recipient) {
+        sender -> Integer,
+        recipient -> Integer,
+        when -> Timestamp,
+    }
+}
+
+diesel::table! {
+    location (id) {
+        id -> Integer,
+        name -> Text,
+        owner -> Integer,
+        descriptor -> Binary,
+        state -> Binary,
+        acl -> Binary,
+        visibility -> SmallInt,
+        visibility_changed -> Timestamp,
+        created -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    location_announcement (id) {
+        id -> Integer,
+        location -> Integer,
+        title -> Text,
+        body -> Text,
+        when -> Binary,
+        public -> Bool,
+        expires -> Timestamp,
+    }
+}
+
+diesel::table! {
+    location_calendar_subscription (location, player) {
+        location -> Integer,
+        player -> Integer,
+    }
+}
+
+diesel::table! {
+    location_chat (location, principal, created) {
+        location -> Integer,
+        principal -> Binary,
+        created -> Timestamp,
+        body -> Binary,
     }
 }
 
 diesel::table! {
     player (id) {
-        id -> Int4,
+        id -> Integer,
         name -> Text,
-        debuted -> Bool,
-        avatar -> Jsonb,
-        message_acl -> Jsonb,
-        online_acl -> Jsonb,
-        new_realm_access_acl -> Jsonb,
-        new_realm_admin_acl -> Jsonb,
+        avatar -> Binary,
+        message_acl -> Binary,
+        online_acl -> Binary,
+        default_location_acl -> Binary,
         reset -> Bool,
-        calendar_id -> Bytea,
-        last_login -> Timestamptz,
-        created -> Timestamptz,
+        calendar_id -> Binary,
+        last_login -> Timestamp,
+        created -> Timestamp,
     }
 }
 
 diesel::table! {
-    publickey (player, fingerprint) {
-        player -> Int4,
+    public_key (player, fingerprint) {
+        player -> Integer,
         fingerprint -> Text,
-        public_key -> Bytea,
-        last_used -> Nullable<Timestamptz>,
-        created -> Timestamptz,
+        key -> Binary,
+        last_used -> Nullable<Timestamp>,
+        created -> Timestamp,
     }
 }
 
 diesel::table! {
-    realm (id) {
-        id -> Int4,
-        train -> Nullable<Int4>,
-        name -> Text,
-        owner -> Int4,
-        asset -> Text,
-        state -> Nullable<Jsonb>,
-        settings -> Jsonb,
-        access_acl -> Jsonb,
-        admin_acl -> Jsonb,
-        in_directory -> Bool,
-        seed -> Int4,
-        solved -> Bool,
-        created -> Timestamptz,
-        updated_at -> Timestamptz,
+    remote_calendar_subscription (owner, server, descriptor, player) {
+        owner -> Text,
+        server -> Text,
+        descriptor -> Binary,
+        player -> Integer,
     }
 }
 
 diesel::table! {
-    realmannouncement (id) {
-        id -> Int4,
-        realm -> Int4,
-        title -> Text,
-        body -> Text,
-        when -> Jsonb,
-        public -> Bool,
-    }
-}
-
-diesel::table! {
-    realmcalendarsubscription (realm, player) {
-        realm -> Int4,
-        player -> Int4,
-    }
-}
-
-diesel::table! {
-    realmchat (principal, created, realm) {
-        realm -> Int4,
-        principal -> Jsonb,
-        created -> Timestamptz,
-        body -> Jsonb,
-    }
-}
-
-diesel::table! {
-    realmtrain (asset) {
-        asset -> Text,
-        allowed_first -> Bool,
-    }
-}
-
-diesel::table! {
-    remoteplayerchat (remote_player, remote_server, created, player, inbound) {
-        player -> Int4,
+    remote_player_chat (player, inbound, remote_player, remote_server, created) {
+        player -> Integer,
         inbound -> Bool,
         remote_player -> Text,
         remote_server -> Text,
-        created -> Timestamptz,
-        body -> Jsonb,
+        created -> Timestamp,
+        body -> Binary,
     }
 }
 
 diesel::table! {
-    remoteplayerlastread (player, remote_player, remote_server) {
-        player -> Int4,
+    remote_player_last_read (player, remote_player, remote_server) {
+        player -> Integer,
         remote_player -> Text,
         remote_server -> Text,
-        when -> Timestamptz,
+        when -> Timestamp,
     }
 }
 
 diesel::table! {
-    serveracl (category) {
-        category -> Varchar,
-        acl -> Jsonb,
+    server_setting (category) {
+        category -> Text,
+        data -> Binary,
     }
 }
 
 diesel::joinable!(bookmark -> player (player));
-diesel::joinable!(publickey -> player (player));
-diesel::joinable!(realm -> player (owner));
-diesel::joinable!(realmannouncement -> realm (realm));
-diesel::joinable!(realmcalendarsubscription -> player (player));
-diesel::joinable!(realmcalendarsubscription -> realm (realm));
-diesel::joinable!(realmchat -> realm (realm));
-diesel::joinable!(remoteplayerchat -> player (player));
-diesel::joinable!(remoteplayerlastread -> player (player));
+diesel::joinable!(calendar_cache -> player (player));
+diesel::joinable!(location -> player (owner));
+diesel::joinable!(location_announcement -> location (location));
+diesel::joinable!(location_calendar_subscription -> location (location));
+diesel::joinable!(location_calendar_subscription -> player (player));
+diesel::joinable!(location_chat -> location (location));
+diesel::joinable!(public_key -> player (player));
+diesel::joinable!(remote_calendar_subscription -> player (player));
+diesel::joinable!(remote_player_chat -> player (player));
+diesel::joinable!(remote_player_last_read -> player (player));
 
 diesel::allow_tables_to_appear_in_same_query!(
   announcement,
-  authoidc,
-  authotp,
-  bannedpeers,
   bookmark,
-  localplayerchat,
-  localplayerlastread,
+  calendar_cache,
+  local_player_chat,
+  local_player_last_read,
+  location,
+  location_announcement,
+  location_calendar_subscription,
+  location_chat,
   player,
-  publickey,
-  realm,
-  realmannouncement,
-  realmcalendarsubscription,
-  realmchat,
-  realmtrain,
-  remoteplayerchat,
-  remoteplayerlastread,
-  serveracl,
+  public_key,
+  remote_calendar_subscription,
+  remote_player_chat,
+  remote_player_last_read,
+  server_setting,
 );

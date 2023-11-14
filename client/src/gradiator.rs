@@ -1,9 +1,15 @@
-pub struct BoolUpdateState(std::sync::Arc<std::sync::atomic::AtomicBool>, bool);
-pub struct NumUpdateState(std::sync::Arc<std::sync::atomic::AtomicU32>, u32);
+use spadina_core::scene::gradiator::{Current, Resolver, Source};
+use std::borrow::Cow;
+use std::collections::{btree_map, BTreeMap};
+use std::sync::atomic::{AtomicBool, AtomicU32};
+use std::sync::Arc;
+
+pub struct BoolUpdateState(Arc<AtomicBool>, bool);
+pub struct NumUpdateState(Arc<AtomicU32>, u32);
 
 pub struct Gradiator<Value, Update> {
-  sources: Vec<spadina_core::asset::gradiator::Source<Value, NumUpdateState, BoolUpdateState, String>>,
-  points: std::collections::BTreeMap<(u32, u32, u32), Update>,
+  sources: Vec<Source<Value, NumUpdateState, BoolUpdateState, String>>,
+  points: BTreeMap<(u32, u32, u32), Update>,
 }
 pub trait Gradiate: Sized + Clone {
   fn mix<'a>(values: impl IntoIterator<Item = (f64, Self)>) -> Self;
@@ -42,10 +48,10 @@ impl<Value: Gradiate, Update: Change<Value>> Gradiator<Value, Update> {
   pub fn register(&mut self, x: u32, y: u32, z: u32) -> &mut Update {
     self.points.entry((x, y, z)).or_default()
   }
-  fn check_dirty(current: &mut spadina_core::asset::gradiator::Current<Value, NumUpdateState, BoolUpdateState, String>) -> bool {
+  fn check_dirty(current: &mut Current<Value, NumUpdateState, BoolUpdateState, String>) -> bool {
     match current {
-      spadina_core::asset::gradiator::Current::Altitude { .. } => false,
-      spadina_core::asset::gradiator::Current::BoolControlled { value, .. } => {
+      Current::Altitude { .. } => false,
+      Current::BoolControlled { value, .. } => {
         let current = value.0.load(std::sync::atomic::Ordering::Relaxed);
         if current == value.1 {
           false
@@ -54,8 +60,8 @@ impl<Value: Gradiate, Update: Change<Value>> Gradiator<Value, Update> {
           true
         }
       }
-      spadina_core::asset::gradiator::Current::Fixed(_) => false,
-      spadina_core::asset::gradiator::Current::NumControlled { value, .. } => {
+      Current::Fixed(_) => false,
+      Current::NumControlled { value, .. } => {
         let current = value.0.load(std::sync::atomic::Ordering::Relaxed);
         if current == value.1 {
           false
@@ -64,12 +70,12 @@ impl<Value: Gradiate, Update: Change<Value>> Gradiator<Value, Update> {
           true
         }
       }
-      spadina_core::asset::gradiator::Current::Setting(_) => todo!(),
+      Current::Setting(_) => todo!(),
     }
   }
-  fn value(current: &spadina_core::asset::gradiator::Current<Value, NumUpdateState, BoolUpdateState, String>, z: u32) -> Value {
+  fn value(current: &Current<Value, NumUpdateState, BoolUpdateState, String>, z: u32) -> Value {
     match current {
-      spadina_core::asset::gradiator::Current::Altitude { top_value, top_altitude, bottom_value, bottom_altitude } => {
+      Current::Altitude { top_value, top_altitude, bottom_value, bottom_altitude } => {
         if z <= *bottom_altitude {
           bottom_value.clone()
         } else if z >= *top_altitude {
@@ -79,23 +85,21 @@ impl<Value: Gradiate, Update: Change<Value>> Gradiator<Value, Update> {
           Value::mix(vec![(1.0 - ratio, top_value.clone()), (ratio, bottom_value.clone())])
         }
       }
-      spadina_core::asset::gradiator::Current::BoolControlled { value, when_true, when_false, .. } => {
+      Current::BoolControlled { value, when_true, when_false, .. } => {
         if value.1 {
           when_true.clone()
         } else {
           when_false.clone()
         }
       }
-      spadina_core::asset::gradiator::Current::Fixed(v) => v.clone(),
-      spadina_core::asset::gradiator::Current::NumControlled { value, values, default_value, .. } => {
-        values.get(value.1 as usize).unwrap_or(default_value).clone()
-      }
-      spadina_core::asset::gradiator::Current::Setting(_) => todo!(),
+      Current::Fixed(v) => v.clone(),
+      Current::NumControlled { value, values, default_value, .. } => values.get(value.1 as usize).unwrap_or(default_value).clone(),
+      Current::Setting(_) => todo!(),
     }
   }
 }
 
-impl<T, C: Change<T>> Change<T> for std::sync::Arc<C> {
+impl<T, C: Change<T>> Change<T> for Arc<C> {
   type World = C::World;
 
   fn change(&self, value: T, world: &mut Self::World) {
@@ -119,64 +123,47 @@ impl<T, C: Change<T>> Change<T> for std::sync::Mutex<C> {
   }
 }
 pub trait IntoGradiator<T>: Sized {
-  type Error: Into<std::borrow::Cow<'static, str>>;
+  type Error: Into<Cow<'static, str>>;
   type Update: Change<Self>;
   fn convert(input: T) -> Result<Self, Self::Error>;
 }
 pub(crate) fn load<T, C: IntoGradiator<T>>(
-  gradiators: std::collections::BTreeMap<String, spadina_core::asset::gradiator::Gradiator<T, String>>,
-  bool_updates: &mut std::collections::BTreeMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>,
-  num_updates: &mut std::collections::BTreeMap<String, std::sync::Arc<std::sync::atomic::AtomicU32>>,
-) -> Result<std::collections::BTreeMap<String, Gradiator<C, <C::Update as Change<C>>::World>>, C::Error> {
+  bool_updates: &mut BTreeMap<String, Arc<AtomicBool>>,
+  num_updates: &mut BTreeMap<String, Arc<AtomicU32>>,
+) -> Result<BTreeMap<String, Gradiator<C, <C::Update as Change<C>>::World>>, C::Error> {
   struct GradiatorVariables<'a> {
-    bool_updates: &'a mut std::collections::BTreeMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>,
-    num_updates: &'a mut std::collections::BTreeMap<String, std::sync::Arc<std::sync::atomic::AtomicU32>>,
+    bool_updates: &'a mut BTreeMap<String, Arc<AtomicBool>>,
+    num_updates: &'a mut BTreeMap<String, Arc<AtomicU32>>,
   }
-  impl<'a> spadina_core::asset::gradiator::Resolver<String, String> for GradiatorVariables<'a> {
-    type Bool = crate::gradiator::BoolUpdateState;
-    type Num = crate::gradiator::NumUpdateState;
+  impl<'a> Resolver<String, String> for GradiatorVariables<'a> {
+    type Bool = BoolUpdateState;
+    type Num = NumUpdateState;
     fn resolve_bool(&mut self, value: String) -> Self::Bool {
-      crate::gradiator::BoolUpdateState(
+      BoolUpdateState(
         match self.bool_updates.entry(value) {
-          std::collections::btree_map::Entry::Vacant(v) => {
-            let value = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+          btree_map::Entry::Vacant(v) => {
+            let value = Arc::new(AtomicBool::new(false));
             v.insert(value.clone());
             value
           }
-          std::collections::btree_map::Entry::Occupied(o) => o.get().clone(),
+          btree_map::Entry::Occupied(o) => o.get().clone(),
         },
         false,
       )
     }
-    fn resolve_num(&mut self, value: String, len: usize) -> Self::Num {
-      crate::gradiator::NumUpdateState(
+    fn resolve_num(&mut self, value: String, _len: usize) -> Self::Num {
+      NumUpdateState(
         match self.num_updates.entry(value) {
-          std::collections::btree_map::Entry::Vacant(v) => {
-            let value = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+          btree_map::Entry::Vacant(v) => {
+            let value = Arc::new(AtomicU32::new(0));
             v.insert(value.clone());
             value
           }
-          std::collections::btree_map::Entry::Occupied(o) => o.get().clone(),
+          btree_map::Entry::Occupied(o) => o.get().clone(),
         },
         0,
       )
     }
   }
-
-  gradiators
-    .into_iter()
-    .map(|(name, gradiator)| {
-      Ok((
-        name,
-        Gradiator {
-          sources: gradiator
-            .sources
-            .into_iter()
-            .map(|s| s.resolve(&mut GradiatorVariables { bool_updates, num_updates }).map(C::convert))
-            .collect::<Result<_, _>>()?,
-          points: Default::default(),
-        },
-      ))
-    })
-    .collect()
+  todo!()
 }

@@ -5,38 +5,38 @@ authors = ['Andre Masella <andre@masella.name>']
 edition = '2021'
 
 [dependencies]
-addr = "^0.15"
-async-trait = '^0.1'
-futures = '^0.3'
-gltf = '^1.0'
+base64 = "^0.22"
 hex = '^0.4'
-http = '^0.2'
-idna = "^0.3"
-lazy_static = "^1.4"
+hyper-util = '^0.1'
+idna = "^1.0"
+int-enum = '^1.0'
 percent-encoding = "^2.2"
 pin-project = '^1.0'
+prometheus-client = '^0.22'
 rand = {version='^0.8', features=["small_rng"]}
-rand_distr = '^0.4'
 read-restrict = '^0.3'
-regex = { version = "^1.5", features = ["unicode"] }
+replace_with = "^0.1"
 rmp-serde = '^1.0'
 serde_json = '^1.0'
-serde_with = { version = '^2.0', features = ["json", "base64"] }
 serde_urlencoded = '^0.7'
+serde_with = { version = '^3.4', features = ["json", "base64", "chrono_0_4"] }
 sha3 = '^0.10'
-tokio-tungstenite = '^0.18'
+tokio-tungstenite = '^0.26'
 unicode-normalization = '^0.1'
 url = "^2.2"
-zstd = "^0.12"
+zstd = "^0.13"
 
 [dependencies.chrono]
 version = '^0.4'
 features = ['serde']
 
+[dependencies.chrono-tz]
+version = "^0.10"
+features = ['serde']
+
 [dependencies.hyper]
-version = '^0.14'
+version = '^1.1'
 features = [
-    'stream',
     'http1',
 ]
 
